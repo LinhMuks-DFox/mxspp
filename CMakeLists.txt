@@ -1,7 +1,7 @@
 # CMakeLists.txt (根目录)
 
 cmake_minimum_required(VERSION 3.20)
-project(mxs LANGUAGES CXX)
+project(mxs LANGUAGES C CXX)
 
 # === 全局配置 ====================================================
 set(CMAKE_CXX_STANDARD 23)
@@ -24,11 +24,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${BIN_DIR})
 find_package(ZLIB REQUIRED)
 find_package(zstd REQUIRED)
 # --- 寻找 LLVM (保持不变, 写得很好) ---
-set(LLVM_INSTALL_DIR "${PROJECT_SOURCE_DIR}/lib/llvm")
-if(NOT EXISTS "${LLVM_INSTALL_DIR}/lib/cmake/llvm/LLVMConfig.cmake")
-    message(FATAL_ERROR "LLVM not found at path: ${LLVM_INSTALL_DIR}")
-endif()
-set(LLVM_DIR "${LLVM_INSTALL_DIR}/lib/cmake/llvm")
+# set(LLVM_INSTALL_DIR "${PROJECT_SOURCE_DIR}/lib/llvm")
+# if(NOT EXISTS "${LLVM_INSTALL_DIR}/lib/cmake/llvm/LLVMConfig.cmake")
+#     message(FATAL_ERROR "LLVM not found at path: ${LLVM_INSTALL_DIR}")
+# endif()
+# set(LLVM_DIR "${LLVM_INSTALL_DIR}/lib/cmake/llvm")
+# find_package(LLVM REQUIRED CONFIG
+#         COMPONENTS Core ExecutionEngine OrcJIT Support OrcTargetProcess
+# )
 find_package(LLVM REQUIRED CONFIG
         COMPONENTS Core ExecutionEngine OrcJIT Support OrcTargetProcess
 )
@@ -56,7 +59,7 @@ include(CheckIPOSupported)
 check_ipo_supported(RESULT lto_supported OUTPUT ipo_err)
 if(lto_supported)
     message(STATUS "LTO/IPO is supported, enabling by default.")
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    # set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 else()
     message(WARNING "LTO/IPO not supported: ${ipo_err}")
 endif()

@@ -12,8 +12,8 @@ add_subdirectory(driver)
 # ======================== 【链接逻辑集中于此】 ========================
 
 # frontend 依赖 core 和 pegtl
-target_link_libraries(frontend PUBLIC core pegtl)
-
+# target_link_libraries(frontend PUBLIC core pegtl)
+target_link_libraries(frontend PUBLIC core pegtl ${MXS_LLVM_LIBRARIES})
 # backend 依赖 frontend 和 LLVM 库
 target_link_libraries(backend PUBLIC frontend ${MXS_LLVM_LIBRARIES})
 

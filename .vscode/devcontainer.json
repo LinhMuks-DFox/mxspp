@@ -5,7 +5,7 @@
     "workspaceFolder": "/workspace",
     "runServices": [
         "mxspp-dev"
-    ],
+    ], // <-- 这里有一个逗号
     "settings": {
         "terminal.integrated.shell.linux": "/bin/bash",
         "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
