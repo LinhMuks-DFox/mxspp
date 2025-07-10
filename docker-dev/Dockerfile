@@ -4,21 +4,24 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------- Base toolchain & deps ----------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt update \
+    && apt install -y  \
     build-essential git cmake ninja-build python3 python3-pip \
-    libedit-dev libz-dev libxml2-dev libssl-dev \
-    llvm clang-format clangd ninja-build \
-    && rm -rf /var/lib/apt/lists/*
+    libedit-dev libxml2-dev libssl-dev \
+    zstd zlib1g-dev wget curl lsb-release gnupg software-properties-common 
+
+RUN  mkdir -p /etc/apt/keyrings
+RUN curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/keyrings/llvm-snapshot.gpg.key > /dev/null
+RUN echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" |  tee /etc/apt/sources.list.d/llvm20.list
+RUN apt update && apt install -y clang-20 clang-format clangd
+RUN apt update && apt install -y libc++-20-dev libc++abi-20-dev
+RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-20 200
+RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 200
 
 # ---------- Workspace ----------
 WORKDIR /workspace
 
-# Download & build LLVM locally into ./lib
-#   只复制脚本，不复制整个源码树；项目代码在运行时通过 volume 挂载
-# COPY docker-dev/download_dep.py /tmp/download_dep.py
-# RUN python3 /tmp/download_dep.py && rm /tmp/download_dep.py
 
-# 预建输出目录（与 CMAKE_RUNTIME_OUTPUT_DIRECTORY 对齐）
 RUN mkdir -p /workspace/bin
 
-CMD ["/bin/bash"]
+CMD ["!/bin/bash"]
