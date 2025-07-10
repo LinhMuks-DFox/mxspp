@@ -24,6 +24,6 @@ target_link_libraries(jit PUBLIC core ${MXS_LLVM_LIBRARIES})
 target_link_libraries(shell PUBLIC jit backend)
 
 # driver 依赖 shell
-target_link_libraries(mxspp PRIVATE shell)
+target_link_libraries(mxs PRIVATE shell)
 
 # =====================================================================
