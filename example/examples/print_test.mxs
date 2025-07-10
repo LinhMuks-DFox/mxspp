@@ -1,0 +1,15 @@
+func main() -> nil {
+    let my_int = 101;
+    let my_float = 2.718;
+    print(my_int);
+    print(my_float);
+    print("test");
+    print(true);
+    print(nil);
+    hello();
+}
+
+
+func hello(x:string="Hello") {
+    print(x);
+}

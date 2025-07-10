@@ -1,0 +1,183 @@
+!#
+ Universal MxScript Feature Test
+ This file attempts to use every language feature,
+ both implemented and planned. Implemented features
+ should execute normally, while unimplemented ones
+ should produce compiler errors.
+#!
+
+# Module system
+import std.io as io;
+
+# FFI example
+@@foreign func write(fd: int, buf: string, count: int) -> int;
+
+# Global binding
+static let println = io.println;
+
+# Function 
+
+func my_func(a: int, b, c: float) -> float {
+    return c (a + b);
+}
+
+
+# Recursion example
+func fib(n: int) -> int {
+    if n <= 1 {
+        return 1;
+    } else {
+        return n * fib(n - 1);
+    }
+}
+
+# Class with constructor, destructor, method and member variables
+class Counter {
+public:
+    let field: int;
+    let hidden: int;
+
+    func init(start: int) {
+        self.field = start;
+        self.hidden = 0;
+    }
+
+    func increment() -> nil{
+        self.field = self.field + 1;
+    }
+
+private:
+    func ~Counter() {
+        write(1, "Counter destroyed\n", 18);
+    }
+}
+
+# Function demonstrating instantiation and member assignment
+func use_counter() {
+    let c = new Counter(0);
+    c.increment();
+    if c.field > 0 {
+        write(1, "positive\n", 9);
+    } else {
+        write(1, "non-positive\n", 12);
+    }
+} # Destructor called at end of scope
+
+# ---- Unimplemented Features ----
+
+# For loop
+func demo_for() {
+    for i in 0..5 {
+        println(i);
+    }
+}
+
+func demo_loop() {
+    let mut x = 0;
+    loop {
+        x++;
+        if x == 10: break;
+    }
+}
+
+func demo_until() {
+    let mut x = 0;
+    let y = 10;
+    until(x == y) {
+        x++;
+    }
+    x = 0;
+    do {
+        x++;
+    }until(x == y);
+}
+
+# Generics and generic call
+@@template(T)
+func identity(x: T) -> T {
+    return x;
+}
+
+@@template<T=int>
+func identity(x: T) -> T {
+    return x;
+}
+
+func use_generics() {
+    let five = identity<float>(5);
+    println(five);
+}
+
+# Tuple destructuring
+func use_tuple() {
+    let (a, b) = (1, 2);
+    println(a);
+    println(b);
+}
+
+@@template(TypeA, TypeB)
+func use_tuple_as_return(a: TypeA, b: TypeB) -> (TypeB, TypeA) {
+    return (b, a);
+}
+
+# Operator overloading
+class Vector {
+public:
+    x: int;
+    y: int;
+
+    func Vector(x: int, y: int) {
+        self.x = x;
+        self.y = y;
+    }
+
+    operator+(other: Vector) -> Vector {
+        let v = new Vector(self.x + other.x, self.y + other.y);
+        return v;
+    }
+}
+
+func operator_demo() {
+    let v1 = new Vector(1, 2);
+    let v2 = new Vector(3, 4);
+    let v3 = v1 + v2;
+    println(v3.x);
+    println(v3.y);
+}
+
+# Union types and match expression
+func maybe_number(flag: int) -> int | string {
+    if flag == 0 { return 42; } else { return "no number"; }
+}
+
+func match_demo() {
+    let result = match (maybe_number(1)) {
+        case n: int => { println(n); n; }
+        case s: string => { println(s); 0; }
+    };
+    println(result);
+}
+
+
+func use_error(a: string, length:int) -> bool | Error {
+    if a.length == length {
+        return true;
+    }
+
+    else 
+        raise std.Error("SegmentFaultError", "Length of a not equals to length passed in", alternative=False);
+        # raise std.Error("SegmentFaultError", "Length of a not equals to length passed in", panic=true); # quit  
+
+}
+
+
+# Entry point
+func main() -> int {
+    use_counter();
+    demo_for();
+    use_generics();
+    use_tuple();
+    operator_demo();
+    match_demo();
+    return 0;
+}

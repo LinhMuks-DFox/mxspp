@@ -1,0 +1,12 @@
+func variable() -> nil {
+    let x = 5;      # Okay
+    # let x = 3;    # Error, x defined
+    # x = 3;        # Error, e are const
+    let mut y = 5;  # Okey
+    y = 10;         # Okey
+}
+
+func main() -> int {
+    variable();
+    return 0;
+}

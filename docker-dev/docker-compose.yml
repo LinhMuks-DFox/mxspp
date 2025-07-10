@@ -1,0 +1,11 @@
+version: '3.9'
+services:
+  mxspp-dev:
+    build:
+      context: ..
+      dockerfile: docker-dev/Dockerfile
+    volumes:
+      - ../:/workspace
+    working_dir: /workspace
+    command: /bin/bash
+    tty: true

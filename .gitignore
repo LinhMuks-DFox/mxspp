@@ -1,0 +1,9 @@
+build/
+bin/
+lib/
+*.so
+*.exe
+*.a
+*.xml
+.cache/
+.idea/

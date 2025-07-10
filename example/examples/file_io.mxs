@@ -1,0 +1,20 @@
+# File: example/file_io.mxs
+# Demonstrates basic file operations and standard stream usage in MxScript.
+
+import std.io as io;
+import std.file.File as File;
+
+func main() -> int {
+    # Write to stdout
+    io.println("Hello, stdout!");
+
+    # Write directly to stderr
+    io.write_file(io.stderr, "This goes to stderr\n");
+
+    # Use the standard File class for file operations
+    let f = File("demo_output.txt", mode="w");
+    f.write("File contents\n");
+    # Destructor will close the file automatically
+
+    return 0;
+}

@@ -1,0 +1,7 @@
+func main() -> nil {
+    let an_integer = 42;
+    let a_float = 3.14;
+    let is_true = true;
+    let is_false = false;
+    let is_nil = nil;
+}

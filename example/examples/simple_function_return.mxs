@@ -1,0 +1,7 @@
+func get_integer() -> int {
+    return 100;
+}
+
+func get_pi() -> float {
+    return 3.14159;
+}

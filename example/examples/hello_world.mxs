@@ -1,0 +1,23 @@
+# Example 1: Hello World
+# Demonstrates basic function definition, imports, static binding and I/O.
+
+# import std.io as io;
+# static let println = io.println;
+
+func hello_world() -> nil {
+    print("Hello, World!");
+}
+
+func variable() -> nil {
+    let x = 5;      # Okay
+    # let x = 3;    # Error, x defined
+    # x = 3;        # Error, e are const
+    let mut y = 5;  # Okey
+    y = 10;         # Okey
+}
+func main() -> int {
+    let mut x = 3;
+    x = 5;
+    hello_world();
+    return 0;
+}

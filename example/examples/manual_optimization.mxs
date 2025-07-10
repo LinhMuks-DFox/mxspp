@@ -1,0 +1,14 @@
+# Example 6: Manual Optimization Levels
+# Demonstrates the @@manual_optimize_level attribute.
+
+class Matrix {}
+
+@@manual_optimize_level(level=3)
+func matrix_multiply(a: Matrix, b: Matrix) -> Matrix {
+    # ... implementation ...
+}
+
+@@manual_optimize_level(level=1)
+func quick_utility_func() -> nil {
+    # ... implementation ...
+}
