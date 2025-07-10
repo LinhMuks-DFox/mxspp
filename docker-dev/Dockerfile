@@ -17,7 +17,7 @@ RUN apt update && apt install -y clang-20 clang-format clangd
 RUN apt update && apt install -y libc++-20-dev libc++abi-20-dev
 RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-20 200
 RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 200
-
+RUN apt update && apt install -y  libzstd-dev 
 # ---------- Workspace ----------
 WORKDIR /workspace
 
