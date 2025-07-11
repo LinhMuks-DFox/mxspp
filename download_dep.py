@@ -290,9 +290,20 @@ def build_llvm_from_source():
             "-B", str(build_dir),
             "-G", "Ninja",
             f"-DCMAKE_INSTALL_PREFIX={install_path}",
-            "-DLLVM_ENABLE_PROJECTS=clang;lld",
+
+            "-DLLVM_ENABLE_PROJECTS=clang;lld",                # 仍然只需要 clang/lld
+            "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind",# 把 libc++ 三件套一起编
+            "-DLLVM_ENABLE_LIBCXX=ON",                         # 让 LLVM 自身吃 libc++
+            "-DCMAKE_C_COMPILER=clang",
+            "-DCMAKE_CXX_COMPILER=clang++",
+            "-DCMAKE_C_FLAGS=-stdlib=libc++",
+            "-DCMAKE_CXX_FLAGS=-stdlib=libc++ -std=c++23",
+            "-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
+            "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
+
+            # "-DLLVM_ENABLE_PROJECTS=clang;lld",
             "-DCMAKE_BUILD_TYPE=Release",
-            "-DLLVM_ENABLE_ASSERTIONS=ON",
+            # "-DLLVM_ENABLE_ASSERTIONS=ON",
         ]
         subprocess.run(cmake_args, check=True)
         

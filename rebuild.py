@@ -27,17 +27,24 @@ def clean_directories():
 def run_cmake_configure():
     """运行 CMake 配置步骤"""
     print(f"\n--- Running CMake in '{BUILD_DIR}' to configure the project ---")
-    
+
     # 确保 build 目录存在
     BUILD_DIR.mkdir(exist_ok=True)
 
-    # 指定 clang 作为 C 和 C++ 编译器
+    # --- 【修改】 ---
+    # 1. 检查 Ninja 是否安装
+    if not shutil.which("ninja"):
+        print("Error: `ninja` command not found. Is Ninja build system installed and in your PATH?", file=sys.stderr)
+        return False
+        
+    # 2. 在 CMake 命令中通过 -G 指定使用 Ninja
     cmake_configure_command = [
         "cmake",
-        "-D", "CMAKE_C_COMPILER=clang",
-        "-D", "CMAKE_CXX_COMPILER=clang++",
+        "-G", "Ninja",
+        "-D", f"CMAKE_TOOLCHAIN_FILE={pathlib.Path('..') / 'toolchain.cmake'}",
         ".."
     ]
+    # --- 【修改结束】 ---
     
     try:
         # `cwd` 参数让命令在指定目录中运行
