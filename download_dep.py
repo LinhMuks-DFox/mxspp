@@ -311,7 +311,7 @@ def build_llvm_from_source():
             "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
 
             "-DCMAKE_BUILD_TYPE=Release",
-            "-DLLVM_TARGETS_TO_BUILD=X86;AArch64",       # 需要其他后端再加
+            "-DLLVM_TARGETS_TO_BUILD=X86"# ";AArch64",       # 需要其他后端再加
         ]
         subprocess.run(cmake_args, check=True)
         
