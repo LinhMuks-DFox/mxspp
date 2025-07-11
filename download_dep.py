@@ -286,14 +286,23 @@ def build_llvm_from_source():
         info("Configuring LLVM with CMake...")
         cmake_args = [
             "cmake",
-            "-S", str(source_path / "llvm"), # 源码内部的 llvm 目录
+            "-S", str(source_path / "llvm"),
             "-B", str(build_dir),
             "-G", "Ninja",
             f"-DCMAKE_INSTALL_PREFIX={install_path}",
 
-            "-DLLVM_ENABLE_PROJECTS=clang;lld",                # 仍然只需要 clang/lld
-            "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind",# 把 libc++ 三件套一起编
-            "-DLLVM_ENABLE_LIBCXX=ON",                         # 让 LLVM 自身吃 libc++
+            # 仅要 LLVM 库，不编 clang / lld / utils
+            "-DLLVM_ENABLE_PROJECTS=",                   # 空串 → 全部跳过
+            "-DLLVM_BUILD_TOOLS=OFF",                    # 关掉 llvm-ar 等工具
+            "-DLLVM_BUILD_UTILS=OFF",
+            "-DLLVM_INCLUDE_TESTS=OFF",
+            "-DLLVM_INCLUDE_EXAMPLES=OFF",
+
+            # libc++ 三件套，保持单一 ABI
+            "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind",
+            "-DLLVM_ENABLE_LIBCXX=ON",
+
+            # 编译器与 flags
             "-DCMAKE_C_COMPILER=clang",
             "-DCMAKE_CXX_COMPILER=clang++",
             "-DCMAKE_C_FLAGS=-stdlib=libc++",
@@ -301,9 +310,8 @@ def build_llvm_from_source():
             "-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
             "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
 
-            # "-DLLVM_ENABLE_PROJECTS=clang;lld",
             "-DCMAKE_BUILD_TYPE=Release",
-            # "-DLLVM_ENABLE_ASSERTIONS=ON",
+            "-DLLVM_TARGETS_TO_BUILD=X86;AArch64",       # 需要其他后端再加
         ]
         subprocess.run(cmake_args, check=True)
         
