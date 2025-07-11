@@ -1,0 +1,10 @@
+{
+    "name": "mxspp-dev",
+    "dockerComposeFile": "../docker-dev/docker-compose.yml",
+    "service": "mxspp-dev",
+    "workspaceFolder": "/workspace",
+    "runServices": [
+        "mxspp-dev"
+    ],
+    "remoteUser": "root"
+}
