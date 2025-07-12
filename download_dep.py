@@ -9,7 +9,8 @@ import tarfile
 import urllib.request
 import re
 import argparse
-import zipfile # 依然保留，以防万一或用于PEGTL
+import zipfile
+import platform # 引入 platform 模块
 
 # ==============================================================================
 # Configuration
@@ -22,43 +23,42 @@ REQUIREMENTS_FILE = "requirements.txt"
 
 # --- LLVM Configuration ---
 LLVM_VERSION_TAG = "llvmorg-20.1.8"
-# 更改 LLVM_CONFIG 以优先使用 .tar.xz 格式，并确保解压目录名规范化
 LLVM_CONFIG = {
     "source": {
-        "url": f"https://github.com/llvm/llvm-project/archive/refs/tags/{LLVM_VERSION_TAG}.tar.gz", # LLVM 源码通常是 .tar.gz
+        "url": f"https://github.com/llvm/llvm-project/archive/refs/tags/{LLVM_VERSION_TAG}.tar.gz",
         "archive_name": f"{LLVM_VERSION_TAG}.tar.gz",
-        "inner_dir_prefix": "llvm-project-", # 解压后通常是 llvm-project-版本号
-        "target_dir_name": "llvm_src", # 统一命名为 llvm_src
+        "inner_dir_prefix": "llvm-project-",
+        "target_dir_name": "llvm_src",
     },
     "prebuilt": {
         "linux": {
             "url": f"https://github.com/llvm/llvm-project/releases/download/{LLVM_VERSION_TAG}/LLVM-20.1.8-Linux-X64.tar.xz",
             "archive_name": "LLVM-20.1.8-Linux-X64.tar.xz",
-            "inner_dir_prefix": "LLVM-20.1.8-Linux-X64", # 解压后通常是 LLVM-20.1.8-Linux-X64
-            "target_dir_name": "llvm", # 统一命名为 llvm
+            "inner_dir_prefix": "LLVM-20.1.8-Linux-X64",
+            "target_dir_name": "llvm",
         },
         "darwin": { # macOS
             "url": f"https://github.com/llvm/llvm-project/releases/download/{LLVM_VERSION_TAG}/LLVM-20.1.8-macOS-ARM64.tar.xz",
             "archive_name": "LLVM-20.1.8-macOS-ARM64.tar.xz",
-            "inner_dir_prefix": "LLVM-20.1.8-macOS-ARM64", # 解压后通常是 LLVM-20.1.8-macOS-ARM64
-            "target_dir_name": "llvm", # 统一命名为 llvm
+            "inner_dir_prefix": "LLVM-20.1.8-macOS-ARM64",
+            "target_dir_name": "llvm",
         },
         "win32": { # Windows
             "url": f"https://github.com/llvm/llvm-project/releases/download/{LLVM_VERSION_TAG}/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz",
             "archive_name": "clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz",
-            "inner_dir_prefix": "clang+llvm-20.1.8-x86_64-pc-windows-msvc", # 解压后通常是 clang+llvm-20.1.8-x86_64-pc-windows-msvc
-            "target_dir_name": "llvm", # 统一命名为 llvm
+            "inner_dir_prefix": "clang+llvm-20.1.8-x86_64-pc-windows-msvc",
+            "target_dir_name": "llvm",
         }
     }
 }
 
-# --- PEGTL Configuration (NEW) ---
+# --- PEGTL Configuration ---
 PEGTL_VERSION_TAG = "3.2.7"
 PEGTL_CONFIG = {
     "url": f"https://github.com/taocpp/pegtl/archive/refs/tags/{PEGTL_VERSION_TAG}.zip",
     "archive_name": f"{PEGTL_VERSION_TAG}.zip",
     "inner_dir_prefix": f"pegtl-{PEGTL_VERSION_TAG}",
-    "target_dir_name": "pegtl" # 统一命名为 pegtl
+    "target_dir_name": "pegtl"
 }
 
 
@@ -104,7 +104,6 @@ def setup_venv():
 
         if pathlib.Path(REQUIREMENTS_FILE).is_file():
             info(f"Found {REQUIREMENTS_FILE}. Installing packages...")
-            # On Windows, the executable is in Scripts/, not bin/
             pip_path = "Scripts" if sys.platform == "win32" else "bin"
             pip_executable = VENV_DIR / pip_path / "pip"
             subprocess.run([str(pip_executable), "install", "-r", REQUIREMENTS_FILE], check=True)
@@ -119,7 +118,6 @@ def check_system_dependencies():
     """Checks for compilers and libraries based on the OS."""
     info("Checking system compiler and library dependencies...")
     all_ok = True
-    # 1. Check for clang/clang++
     for cmd in ["clang", "clang++"]:
         if not shutil.which(cmd):
             error(f"Compiler '{cmd}' not found. Please install clang suite (version >= 20).")
@@ -140,7 +138,6 @@ def check_system_dependencies():
             error(f"Could not execute '{cmd} --version': {e}")
             all_ok = False
 
-    # 2. Check for libc++ (Linux-specific)
     if sys.platform == "linux":
         try:
             result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, check=True)
@@ -162,7 +159,13 @@ def check_system_dependencies():
 def download_and_extract(url, archive_name, target_dir, inner_dir_prefix, final_dir_name):
     """Downloads and extracts a given archive, then renames the extracted directory."""
     archive_path = target_dir / archive_name
+    final_target_path = target_dir / final_dir_name
     
+    # Check if final directory already exists
+    if final_target_path.is_dir():
+        success(f"Directory '{final_target_path}' already exists. Skipping.")
+        return
+
     # Download
     try:
         def show_progress(block_num, block_size, total_size):
@@ -180,37 +183,40 @@ def download_and_extract(url, archive_name, target_dir, inner_dir_prefix, final_
         sys.exit(1)
 
     # Extract
-    extracted_path = None
+    extracted_path_name = None
     try:
         info(f"Extracting '{archive_path}'...")
+        # Find the top-level directory name from the archive without full extraction first
         if archive_path.suffix == ".zip":
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                # Find the top-level directory
-                for name in zip_ref.namelist():
-                    if name.startswith(inner_dir_prefix) and name.endswith('/'):
-                        extracted_path = target_dir / name.split('/')[0]
+                top_level_dirs = {name.split('/')[0] for name in zip_ref.namelist()}
+                for d in top_level_dirs:
+                    if d.startswith(inner_dir_prefix):
+                        extracted_path_name = d
                         break
                 zip_ref.extractall(target_dir)
-        elif str(archive_path).endswith(".tar.xz") or str(archive_path).endswith(".tar.gz"):
+
+        elif str(archive_path).endswith((".tar.xz", ".tar.gz")):
             mode = "r:xz" if str(archive_path).endswith(".tar.xz") else "r:gz"
             with tarfile.open(archive_path, mode) as tar:
-                # Find the top-level directory
-                for member in tar.getmembers():
-                    if member.isdir() and member.name.startswith(inner_dir_prefix):
-                        extracted_path = target_dir / member.name
+                top_level_dirs = {member.name.split('/')[0] for member in tar.getmembers()}
+                for d in top_level_dirs:
+                    if d.startswith(inner_dir_prefix):
+                        extracted_path_name = d
                         break
                 tar.extractall(path=target_dir)
         else:
             raise NotImplementedError(f"Extraction for {archive_path.suffix} not supported.")
         success(f"Archive extracted to '{target_dir}'.")
         
-        # Rename the extracted directory
-        if extracted_path and extracted_path.is_dir() and extracted_path.name != final_dir_name:
-            final_target_path = target_dir / final_dir_name
-            info(f"Renaming '{extracted_path.name}' to '{final_dir_name}'...")
-            shutil.move(str(extracted_path), str(final_target_path))
-            success(f"Renamed to '{final_target_path}'.")
-        elif not extracted_path:
+        # Rename
+        if extracted_path_name:
+            extracted_path = target_dir / extracted_path_name
+            if extracted_path.is_dir():
+                info(f"Renaming '{extracted_path.name}' to '{final_dir_name}'...")
+                shutil.move(str(extracted_path), str(final_target_path))
+                success(f"Renamed to '{final_target_path}'.")
+        else:
             warn("Could not determine the top-level extracted directory for renaming.")
 
     except (tarfile.TarError, zipfile.BadZipFile, NotImplementedError) as e:
@@ -228,7 +234,7 @@ def setup_prebuilt_llvm():
         sys.exit(1)
     
     config = LLVM_CONFIG["prebuilt"][sys.platform]
-    install_path = LIB_DIR / config["target_dir_name"] # 使用 target_dir_name
+    install_path = LIB_DIR / config["target_dir_name"]
 
     if install_path.is_dir():
         success(f"LLVM already found at '{install_path}'. Skipping download.")
@@ -253,21 +259,20 @@ def build_llvm_from_source():
         info("Build cancelled by user.")
         sys.exit(0)
 
-    # Check for build tools
     if not all(shutil.which(cmd) for cmd in ["cmake", "ninja"]):
         error("Build requires `cmake` and `ninja`. Please install them and ensure they are in your PATH.")
         sys.exit(1)
     info("Found build tools: cmake, ninja. (OK)")
 
     config = LLVM_CONFIG["source"]
-    source_path = LIB_DIR / config["target_dir_name"] # 使用 target_dir_name
-    install_path = LIB_DIR / "llvm_build_install" # 自定义安装目录名，与预构建区分
+    source_path = LIB_DIR / config["target_dir_name"]
+    # MODIFIED: Install to the same 'llvm' directory as prebuilt versions
+    install_path = LIB_DIR / "llvm"
     
     if install_path.is_dir():
         success(f"Custom built LLVM already found at '{install_path}'. Skipping build.")
         return
 
-    # Download and extract source
     LIB_DIR.mkdir(exist_ok=True)
     if not source_path.is_dir():
         download_and_extract(
@@ -278,7 +283,17 @@ def build_llvm_from_source():
             config["target_dir_name"]
         )
     
-    # Configure and build
+    # MODIFIED: Determine target architecture dynamically
+    arch = platform.machine().lower()
+    if "x86_64" in arch or "amd64" in arch:
+        llvm_target = "X86"
+    elif "aarch64" in arch or "arm64" in arch:
+        llvm_target = "AArch64"
+    else:
+        error(f"Unsupported architecture for LLVM build: {arch}. Please add it to the script.")
+        sys.exit(1)
+    info(f"Detected architecture '{arch}'. Setting LLVM target to '{llvm_target}'.")
+
     build_dir = source_path / "build"
     build_dir.mkdir(exist_ok=True)
     
@@ -290,48 +305,46 @@ def build_llvm_from_source():
             "-B", str(build_dir),
             "-G", "Ninja",
             f"-DCMAKE_INSTALL_PREFIX={install_path}",
-
-            # 仅要 LLVM 库，不编 clang / lld / utils
-            "-DLLVM_ENABLE_PROJECTS=",                   # 空串 → 全部跳过
-            "-DLLVM_BUILD_TOOLS=OFF",                    # 关掉 llvm-ar 等工具
+            "-DLLVM_ENABLE_PROJECTS=",
+            "-DLLVM_BUILD_TOOLS=OFF",
             "-DLLVM_BUILD_UTILS=OFF",
             "-DLLVM_INCLUDE_TESTS=OFF",
             "-DLLVM_INCLUDE_EXAMPLES=OFF",
-
-            # libc++ 三件套，保持单一 ABI
             "-DLLVM_ENABLE_RUNTIMES=libcxx;libcxxabi;libunwind",
             "-DLLVM_ENABLE_LIBCXX=ON",
-
-            # 编译器与 flags
             "-DCMAKE_C_COMPILER=clang",
             "-DCMAKE_CXX_COMPILER=clang++",
             "-DCMAKE_C_FLAGS=-stdlib=libc++",
             "-DCMAKE_CXX_FLAGS=-stdlib=libc++ -std=c++23",
             "-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
             "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
-
             "-DCMAKE_BUILD_TYPE=Release",
-            "-DLLVM_TARGETS_TO_BUILD=X86"# ";AArch64",       # 需要其他后端再加
+            f"-DLLVM_TARGETS_TO_BUILD={llvm_target}", # Use dynamic target
         ]
-        subprocess.run(cmake_args, check=True)
+        # Only run cmake configure step if not already cached
+        if not (build_dir / "build.ninja").exists():
+            subprocess.run(cmake_args, check=True)
+        else:
+            info("CMake cache found. Skipping configuration.")
         
         info("Building and installing LLVM... (This will take a long time)")
         subprocess.run(["cmake", "--build", str(build_dir), "--target", "install"], check=True)
         
         success(f"LLVM successfully built and installed at '{install_path}'.")
-    except subprocess.CalledProcessError as e:
-        error(f"LLVM build failed: {e}")
-        error(f"Check logs in '{build_dir}' for more details.")
-        sys.exit(1)
-    finally:
+
+        # MODIFIED: Clean up build directory ONLY on success
         info("Cleaning up build directory to save space...")
         shutil.rmtree(build_dir, ignore_errors=True)
 
-# --- Function to setup PEGTL (NEW) ---
+    except subprocess.CalledProcessError as e:
+        error(f"LLVM build failed: {e}")
+        error(f"Build directory '{build_dir}' is kept for inspection and incremental builds.")
+        sys.exit(1)
+
 def setup_pegtl():
     """Downloads and sets up the PEGTL header-only library."""
     config = PEGTL_CONFIG
-    install_path = LIB_DIR / config["target_dir_name"] # 使用 target_dir_name
+    install_path = LIB_DIR / config["target_dir_name"]
 
     if install_path.is_dir():
         success(f"PEGTL already found at '{install_path}'. Skipping download.")
@@ -348,7 +361,6 @@ def setup_pegtl():
     )
     success(f"PEGTL is ready at '{install_path}'.")
 
-
 # ==============================================================================
 # Main Execution
 # ==============================================================================
@@ -360,9 +372,9 @@ def main():
         action="store_true",
         help="Build LLVM from source instead of downloading a pre-built binary. Requires cmake and ninja."
     )
-    # 新增 --llvm-download 选项，默认不下载
+    # MODIFIED: Added short option -lvd
     parser.add_argument(
-        "--llvm-download",
+        "-lvd", "--llvm-download",
         action="store_true",
         help="Force download and setup of LLVM (either pre-built or from source)."
     )
@@ -374,16 +386,14 @@ def main():
         check_system_dependencies()
         print()
 
-        # 只有当用户明确指定 --llvm-download 时才执行 LLVM 设置
         if args.llvm_download:
             if args.build_from_source:
                 build_llvm_from_source()
             else:
                 setup_prebuilt_llvm()
         else:
-            info("Skipping LLVM download. Use --llvm-download to force setup.")
+            info("Skipping LLVM setup. Use --llvm-download (or -lvd) to force it.")
         
-        # --- Call to setup PEGTL (NEW) ---
         print()
         setup_pegtl()
         
@@ -394,7 +404,6 @@ def main():
         error("\nScript interrupted by user.")
         sys.exit(130)
     except SystemExit as e:
-        # Don't print an extra error for sys.exit() calls
         sys.exit(e.code)
     except Exception as e:
         error(f"An unexpected error occurred: {e}")
