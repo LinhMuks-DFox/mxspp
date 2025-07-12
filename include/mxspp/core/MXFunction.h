@@ -2,9 +2,9 @@
 
 #include "MXInterface.h"
 #include "MXMacro.h"
-#include "mxspp/core/MXObject.h"
 #include "MXType.h"
 #include "_type_def.h"
+#include "mxspp/core/MXObject.h"
 
 #include <vector>
 namespace mxs::core {

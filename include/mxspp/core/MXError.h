@@ -1,7 +1,7 @@
 #pragma once
 
 #include "MXObject.h"
-#include "_type_def.h" // Assuming this contains MXObjectOwned, repr_t, etc.
+#include "_type_def.h"// Assuming this contains MXObjectOwned, repr_t, etc.
 #include <string>
 
 namespace mxs::core {
@@ -11,10 +11,8 @@ namespace mxs::core {
 
     class MXS_API MXError : public MXObject {
     public:
-        explicit MXError(error_type_name_t  error_type,
-                         message_t  message,
-                         MXObjectOwned alternative = nullptr,
-                         bool panic = false,
+        explicit MXError(error_type_name_t error_type, message_t message,
+                         MXObjectOwned alternative = nullptr, bool panic = false,
                          bool is_static = false);
 
         ~MXError() override;
@@ -22,7 +20,7 @@ namespace mxs::core {
         [[nodiscard]] auto repr() const -> repr_t override;
 
         // --- RTTI ---
-        static auto get_rtti() -> const MXRuntimeTypeInfo&;
+        static auto get_rtti() -> const MXRuntimeTypeInfo &;
 
     private:
         error_type_name_t error_type_;
