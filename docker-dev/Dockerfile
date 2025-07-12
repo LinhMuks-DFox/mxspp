@@ -11,7 +11,7 @@ RUN apt update \
     python3-venv \
     libedit-dev libxml2-dev libssl-dev \
     zstd zlib1g-dev libzstd-dev tree vim make pkg-config \ 
-    wget curl lsb-release gnupg software-properties-common openssh-server openssh-client autopep8 \
+    wget curl lsb-release gnupg software-properties-common openssh-server openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Add LLVM repository and install LLVM toolchain
