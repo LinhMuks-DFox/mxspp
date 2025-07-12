@@ -319,6 +319,9 @@ def build_llvm_from_source():
             "-DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
             "-DCMAKE_SHARED_LINKER_FLAGS=-stdlib=libc++ -lc++abi -lunwind",
             "-DCMAKE_BUILD_TYPE=Release",
+            "-DLLVM_USE_SYSTEM_ZLIB=OFF",
+            "-DLLVM_USE_SYSTEM_ZSTD=OFF",
+            "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
             f"-DLLVM_TARGETS_TO_BUILD={llvm_target}", # Use dynamic target
         ]
         # Only run cmake configure step if not already cached
