@@ -9,3 +9,4 @@ lib/
 .idea/
 .venv/
 venv/
+check_result.md

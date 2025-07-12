@@ -20,11 +20,13 @@ RUN mkdir -p /etc/apt/keyrings \
     && echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" | tee /etc/apt/sources.list.d/llvm20.list \
     && apt update \
     && apt install -y --no-install-recommends \
-    clang-20 clang-format-20 clangd-20 \
+    clang-20 clang-format-20 clangd-20 clang-tidy-20 \
     libc++-20-dev libc++abi-20-dev \
     llvm-20 llvm-20-dev llvm-20-tools \
     && update-alternatives --install /usr/bin/clang clang /usr/bin/clang-20 200 \
     && update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-20 200 \
+    && update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-20 200 \
+    && update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-20 200 \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- Workspace ----------

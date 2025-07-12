@@ -1,2 +1,5 @@
 llvmlite
 ruff
+autopep8
+mypy
+black
