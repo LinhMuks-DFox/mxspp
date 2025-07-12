@@ -18,4 +18,4 @@ add_library(core SHARED
 target_include_directories(core PUBLIC
         ../../include
 )
-target_link_libraries(core PRIVATE ${MXS_LLVM_LIBRARIES} c++)
+target_link_libraries(core PUBLIC ${MXS_LLVM_LIBRARIES})
