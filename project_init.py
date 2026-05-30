@@ -70,26 +70,26 @@ PEGTL_CONFIG = {
 class Colors:
     """ANSI color codes"""
 
-    BLUE = "\033[0;34m"
-    GREEN = "\033[0;32m"
-    RED = "\033[0;31m"
-    YELLOW = "\033[0;33m"
-    NC = "\033[0m"
+    BLUE: str = "\033[0;34m"
+    GREEN: str = "\033[0;32m"
+    RED: str = "\033[0;31m"
+    YELLOW: str = "\033[0;33m"
+    NC: str = "\033[0m"
 
 
-def info(msg):
+def info(msg: str) -> None:
     print(f"{Colors.BLUE}[INFO]{Colors.NC} {msg}")
 
 
-def success(msg):
+def success(msg: str) -> None:
     print(f"{Colors.GREEN}[SUCCESS]{Colors.NC} {msg}")
 
 
-def warn(msg):
+def warn(msg: str) -> None:
     print(f"{Colors.YELLOW}[WARNING]{Colors.NC} {msg}")
 
 
-def error(msg):
+def error(msg: str) -> None:
     print(f"{Colors.RED}[ERROR]{Colors.NC} {msg}", file=sys.stderr)
 
 
@@ -98,7 +98,7 @@ def error(msg):
 # ==============================================================================
 
 
-def setup_venv():
+def setup_venv() -> None:
     """Checks for and sets up the Python virtual environment."""
     info("Checking for Python virtual environment...")
     if VENV_DIR.is_dir():
@@ -107,7 +107,8 @@ def setup_venv():
 
     info(f"'{VENV_DIR}' not found. Creating virtual environment...")
     try:
-        subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
+        subprocess.run([sys.executable, "-m", "venv",
+                       str(VENV_DIR)], check=True)
         info(f"Virtual environment created in '{VENV_DIR}'.")
 
         if pathlib.Path(REQUIREMENTS_FILE).is_file():
@@ -125,7 +126,7 @@ def setup_venv():
         sys.exit(1)
 
 
-def check_system_dependencies():
+def check_system_dependencies() -> None:
     """Checks for compilers and libraries based on the OS."""
     info("Checking system compiler and library dependencies...")
     all_ok = True
@@ -182,8 +183,8 @@ def check_system_dependencies():
 
 
 def download_and_extract(
-    url, archive_name, target_dir, inner_dir_prefix, final_dir_name
-):
+    url: str, archive_name: str, target_dir: pathlib.Path, inner_dir_prefix: str, final_dir_name: str
+) -> None:
     """Downloads and extracts a given archive, then renames the extracted directory."""
     archive_path = target_dir / archive_name
     final_target_path = target_dir / final_dir_name
@@ -199,7 +200,8 @@ def download_and_extract(
         def show_progress(block_num, block_size, total_size):
             downloaded = block_num * block_size
             percent = downloaded * 100 / total_size if total_size > 0 else 0
-            sys.stdout.write(f"\rDownloading {archive_name}: {int(percent)}% complete")
+            sys.stdout.write(
+                f"\rDownloading {archive_name}: {int(percent)}% complete")
             sys.stdout.flush()
 
         info(f"Downloading to '{archive_path}'...")
@@ -217,7 +219,8 @@ def download_and_extract(
         # Find the top-level directory name from the archive without full extraction first
         if archive_path.suffix == ".zip":
             with zipfile.ZipFile(archive_path, "r") as zip_ref:
-                top_level_dirs = {name.split("/")[0] for name in zip_ref.namelist()}
+                top_level_dirs = {name.split("/")[0]
+                                  for name in zip_ref.namelist()}
                 for d in top_level_dirs:
                     if d.startswith(inner_dir_prefix):
                         extracted_path_name = d
@@ -245,7 +248,8 @@ def download_and_extract(
         if extracted_path_name:
             extracted_path = target_dir / extracted_path_name
             if extracted_path.is_dir():
-                info(f"Renaming '{extracted_path.name}' to '{final_dir_name}'...")
+                info(
+                    f"Renaming '{extracted_path.name}' to '{final_dir_name}'...")
                 shutil.move(str(extracted_path), str(final_target_path))
                 success(f"Renamed to '{final_target_path}'.")
         else:
@@ -259,7 +263,7 @@ def download_and_extract(
         os.remove(archive_path)
 
 
-def setup_prebuilt_llvm():
+def setup_prebuilt_llvm() -> None:
     """Downloads and sets up the pre-built LLVM for the current OS."""
     if sys.platform not in LLVM_CONFIG["prebuilt"]:
         error(
@@ -286,7 +290,7 @@ def setup_prebuilt_llvm():
     success(f"Pre-built LLVM is ready at '{install_path}'.")
 
 
-def build_llvm_from_source():
+def build_llvm_from_source() -> None:
     """Downloads LLVM source and builds it using CMake."""
     warn("Building LLVM from source is a long and resource-intensive process.")
     warn("This can take over an hour and require >30GB of disk space.")
@@ -307,7 +311,8 @@ def build_llvm_from_source():
     install_path = LIB_DIR / "llvm"
 
     if install_path.is_dir():
-        success(f"Custom built LLVM already found at '{install_path}'. Skipping build.")
+        success(
+            f"Custom built LLVM already found at '{install_path}'. Skipping build.")
         return
 
     LIB_DIR.mkdir(exist_ok=True)
@@ -331,7 +336,8 @@ def build_llvm_from_source():
             f"Unsupported architecture for LLVM build: {arch}. Please add it to the script."
         )
         sys.exit(1)
-    info(f"Detected architecture '{arch}'. Setting LLVM target to '{llvm_target}'.")
+    info(
+        f"Detected architecture '{arch}'. Setting LLVM target to '{llvm_target}'.")
 
     build_dir = source_path / "build"
     build_dir.mkdir(exist_ok=True)
@@ -391,7 +397,7 @@ def build_llvm_from_source():
         sys.exit(1)
 
 
-def setup_pegtl():
+def setup_pegtl() -> None:
     """Downloads and sets up the PEGTL header-only library."""
     config = PEGTL_CONFIG
     install_path = LIB_DIR / config["target_dir_name"]

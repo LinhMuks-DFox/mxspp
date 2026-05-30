@@ -27,10 +27,8 @@ TOOLS_TO_PROBE: List[str] = [
 LFS_THRESHOLD_BYTES: int = 5 * 1024 * 1024
 TODO_PATTERN = re.compile(r"\b(TODO|FIXME|BUG)\b", re.IGNORECASE)
 LICENSE_PATTERN = re.compile(r"SPDX-License-Identifier:", re.IGNORECASE)
-CDB_CANDIDATES: List[str] = [
-    "compile_commands.json", "build/compile_commands.json"]
-EXCLUDED_FILES: Set[str] = {"download_dep.py",
-                            "rebuild.py", "check_before_commit.py"}
+CDB_CANDIDATES: List[str] = ["compile_commands.json", "build/compile_commands.json"]
+EXCLUDED_FILES: Set[str] = {"download_dep.py", "rebuild.py", "check_before_commit.py"}
 MAX_WORKERS: int = os.cpu_count() or 4
 # --- End Configuration ---
 
@@ -166,8 +164,7 @@ def lint_ruff(files: List[Path]) -> CheckResult:
     if not files:
         return CheckResult("ruff", "SKIP", "No Python files to lint")
     run_command(
-        ["ruff", "check", "--fix",
-            "--exit-zero-even-if-changed", *map(str, files)]
+        ["ruff", "check", "--fix", "--exit-zero-even-if-changed", *map(str, files)]
     )
     res = run_command(["ruff", "check", *map(str, files)])
     if res.returncode == 0:
@@ -313,8 +310,7 @@ def generate_plain_text_report(results: List[CheckResult]) -> str:
             for line in details.splitlines():
                 report_parts.append(f"   {line}")
             if issue.fix_suggestion:
-                report_parts.append(
-                    f"   -> Suggestion: {issue.fix_suggestion}")
+                report_parts.append(f"   -> Suggestion: {issue.fix_suggestion}")
 
     return "\n".join(report_parts)
 
@@ -371,15 +367,13 @@ def main() -> int:
 
     # 2. Formatters & Linters (with auto-fix)
     if tool_availability.get("clang-format"):
-        tasks.append(
-            ("clang-format", lambda: format_clang_format(c_cpp_files)))
+        tasks.append(("clang-format", lambda: format_clang_format(c_cpp_files)))
     if tool_availability.get("black"):
         tasks.append(("black", lambda: format_python(py_files, "black")))
     if tool_availability.get("autopep8"):
         tasks.append(("autopep8", lambda: format_python(py_files, "autopep8")))
     if tool_availability.get("clang-tidy"):
-        tasks.append(
-            ("clang-tidy", lambda: lint_clang_tidy(c_cpp_files, cdb_path)))
+        tasks.append(("clang-tidy", lambda: lint_clang_tidy(c_cpp_files, cdb_path)))
     if tool_availability.get("ruff"):
         tasks.append(("ruff", lambda: lint_ruff(py_files)))
     if tool_availability.get("mypy"):

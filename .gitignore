@@ -1,5 +1,6 @@
 build/
 bin/
+.DS_Store
 lib/
 *.so
 *.exe
@@ -10,3 +11,7 @@ lib/
 .venv/
 venv/
 check_result.md
+.ruff_cache/
+.mypy_cache
+.ropeproject
+.devcontainer/

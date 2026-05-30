@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import json
 import argparse
 import pathlib
@@ -81,7 +83,7 @@ def parse_args():
     parser.add_argument(
         "-o", "--output",
         type=pathlib.Path,
-        default=pathlib.Path("./.devcontainer.json"),
+        default=pathlib.Path("./.devcontainer/devcontainer.json"),
         help="Output file path for the devcontainer.json. Default is './.devcontainer.json'."
     )
     parser.add_argument(
@@ -130,9 +132,12 @@ def main():
             # 使用 indent=4 来格式化输出的 JSON 文件
             json.dump(config, f, indent=4, ensure_ascii=False)
         print(f"Successfully created '{output_file}' with {len(final_extensions)} extensions.")
+        print("To apply this setting for vscode: command/ctrl + shift + p -> Devcontainer: rebuil/reopen")
+        
     except IOError as e:
         print(f"Error writing to file {output_file}: {e}", file=sys.stderr)
         sys.exit(1)
+    
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 #pragma once
 #include "ast.h"
-#include "grammer.hpp"
+#include "grammar.hpp"
 #include <tao/pegtl.hpp>
 
 namespace mxs::frontend::actions {
@@ -30,7 +30,7 @@ namespace mxs::frontend::actions {
             // 注意：你需要确保你的 IntegerLiteral 类有一个接收 int64_t 的构造函数。
             // 例如:
             // explicit IntegerLiteral(int64_t v) : value(v) {}
-            auto node = std::make_unique<ast::IntegerLiteral>(val);
+            auto node = std::make_unique<ast::IntegerLiteral>(val, false);
 
             // --- 步骤 3: 将新节点压入状态栈 ---
             // 这个节点现在位于栈顶，等待被它的父节点（例如一个二元表达式）使用。

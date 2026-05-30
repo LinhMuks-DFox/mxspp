@@ -1,4 +1,4 @@
-add_library(frontend SHARED ast.cpp)
+add_library(frontend SHARED ast.cpp parser.cpp)
 target_include_directories(frontend PUBLIC ../../include)
 
 # 【修正】只链接直接依赖。c++ 和 LLVM 将从 core 传递过来

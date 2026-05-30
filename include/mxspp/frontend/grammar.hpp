@@ -32,8 +32,8 @@ namespace mxs::frontend::grammar {
                                       pegtl::plus<pegtl::digit>> { };
     struct string_literal
         : pegtl::seq<pegtl::one<'"'>,
-                     pegtl::until<pegtl::one<'"'>,
-                                  pegtl::if_must<pegtl::one<'\\'>, pegtl::any>>,
+                     pegtl::star<pegtl::sor<pegtl::seq<pegtl::one<'\\'>, pegtl::any>,
+                                            pegtl::not_one<'"'>>>,
                      pegtl::one<'"'>> { };
     struct bool_literal
         : pegtl::sor<keyword<'t', 'r', 'u', 'e'>, keyword<'f', 'a', 'l', 's', 'e'>> { };
@@ -42,8 +42,10 @@ namespace mxs::frontend::grammar {
                                 bool_literal, nil_literal> { };
 
     // Comments
-    struct line_comment : pegtl::seq<pegtl::string<'/', '/'>, pegtl::until<pegtl::eolf>> {
-    };
+    // MXScript line comments use '#' (as in every example); '//' is also accepted.
+    struct line_comment
+        : pegtl::seq<pegtl::sor<pegtl::string<'/', '/'>, pegtl::one<'#'>>,
+                     pegtl::until<pegtl::eolf>> { };
     struct block_comment
         : pegtl::seq<pegtl::string<'/', '*'>, pegtl::until<pegtl::string<'*', '/'>>> { };
     struct comment : pegtl::sor<line_comment, block_comment> { };
@@ -155,38 +157,33 @@ namespace mxs::frontend::grammar {
     struct multiplicative_op
         : pegtl::sor<pegtl::one<'*'>, pegtl::one<'/'>, pegtl::one<'%'>> { };
     struct multiplicative_expr
-        : pegtl::list<unary_expr, pegtl::seq<ignored, multiplicative_op, ignored>,
-                      unary_expr> { };
+        : pegtl::list<unary_expr, pegtl::seq<ignored, multiplicative_op, ignored>> { };
 
     struct additive_op : pegtl::sor<pegtl::one<'+'>, pegtl::one<'-'>> { };
     struct additive_expr
-        : pegtl::list<multiplicative_expr, pegtl::seq<ignored, additive_op, ignored>,
-                      multiplicative_expr> { };
+        : pegtl::list<multiplicative_expr,
+                      pegtl::seq<ignored, additive_op, ignored>> { };
 
     struct range_op : pegtl::string<'.', '.'> { };
-    struct range_expr : pegtl::list<additive_expr, pegtl::seq<ignored, range_op, ignored>,
-                                    additive_expr> { };
+    struct range_expr
+        : pegtl::list<additive_expr, pegtl::seq<ignored, range_op, ignored>> { };
 
     struct relational_op : pegtl::sor<pegtl::string<'<', '='>, pegtl::string<'>', '='>,
                                       pegtl::one<'<'>, pegtl::one<'>'>> { };
     struct relational_expr
-        : pegtl::list<range_expr, pegtl::seq<ignored, relational_op, ignored>,
-                      range_expr> { };
+        : pegtl::list<range_expr, pegtl::seq<ignored, relational_op, ignored>> { };
 
     struct equality_op : pegtl::sor<pegtl::string<'=', '='>, pegtl::string<'!', '='>> { };
     struct equality_expr
-        : pegtl::list<relational_expr, pegtl::seq<ignored, equality_op, ignored>,
-                      relational_expr> { };
+        : pegtl::list<relational_expr, pegtl::seq<ignored, equality_op, ignored>> { };
 
     struct logic_and_op : pegtl::string<'&', '&'> { };
     struct logic_and_expr
-        : pegtl::list<equality_expr, pegtl::seq<ignored, logic_and_op, ignored>,
-                      equality_expr> { };
+        : pegtl::list<equality_expr, pegtl::seq<ignored, logic_and_op, ignored>> { };
 
     struct logic_or_op : pegtl::string<'|', '|'> { };
     struct logic_or_expr
-        : pegtl::list<logic_and_expr, pegtl::seq<ignored, logic_or_op, ignored>,
-                      logic_and_expr> { };
+        : pegtl::list<logic_and_expr, pegtl::seq<ignored, logic_or_op, ignored>> { };
 
     // Right-associative assignment
     struct assign_op
@@ -200,8 +197,9 @@ namespace mxs::frontend::grammar {
     struct expression : assign_expr { };
 
     // Expression sub-components
-    struct arg;
-    struct arg_list : pegtl::list<arg, pegtl::seq<ignored, pegtl::one<','>, ignored>> { };
+    struct argument;
+    struct arg_list
+        : pegtl::list<argument, pegtl::seq<ignored, pegtl::one<','>, ignored>> { };
     struct argument
         : pegtl::sor<
                   pegtl::seq<identifier, ignored, pegtl::one<'='>, ignored, expression>,
