@@ -134,7 +134,7 @@ namespace mxs::frontend::grammar {
 
     struct func_sig
         : pegtl::seq<pegtl::one<'('>, ignored, pegtl::opt<param_list>, ignored,
-                     pegtl::one<')'>,
+                     pegtl::must<pegtl::one<')'>>,
                      pegtl::opt<ignored, pegtl::string<'-', '>'>, ignored, type_spec>> {
     };
 
@@ -288,7 +288,8 @@ namespace mxs::frontend::grammar {
     };
     struct block
         : pegtl::seq<pegtl::one<'{'>, ignored,
-                     pegtl::star<pegtl::seq<statement, ignored>>, pegtl::one<'}'>> { };
+                     pegtl::star<pegtl::seq<statement, ignored>>,
+                     pegtl::must<pegtl::one<'}'>>> { };
 
     // ===================================================================
     // Definitions

@@ -462,6 +462,31 @@ namespace mxs::frontend::parser {
         return a;
     }
 
+    // Render a syntax error as `name:line:col: syntax error: <msg>` plus the offending
+    // source line and a caret. (Positions are coarse for now — precise ones need `must<>`
+    // points in the grammar; a follow-up.)
+    static void report_syntax_error(std::string_view src, std::string_view name,
+                                    const pegtl::parse_error &e) {
+        std::size_t line = 1, col = 1;
+        if (!e.positions().empty()) {
+            line = e.positions().front().line;
+            col = e.positions().front().column;
+        }
+        std::cerr << name << ":" << line << ":" << col << ": syntax error: " << e.message()
+                  << "\n";
+        std::size_t cur = 1, start = 0;
+        for (std::size_t i = 0; i < src.size() && cur < line; ++i)
+            if (src[i] == '\n') {
+                ++cur;
+                start = i + 1;
+            }
+        std::size_t end = start;
+        while (end < src.size() && src[end] != '\n') ++end;
+        std::cerr << "  " << src.substr(start, end - start) << "\n  ";
+        for (std::size_t i = 1; i < col; ++i) std::cerr << ' ';
+        std::cerr << "^\n";
+    }
+
     std::unique_ptr<ast::TranslationUnit> parse_to_ast(std::string_view source,
                                                        std::string_view source_name) {
         try {
@@ -494,7 +519,7 @@ namespace mxs::frontend::parser {
             }
             return tu;
         } catch (const pegtl::parse_error &e) {
-            std::cerr << "parse error: " << e.what() << "\n";
+            report_syntax_error(source, source_name, e);
             return nullptr;
         }
     }
