@@ -7,6 +7,9 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <cstdio>
+#include <cstdlib>
+
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -43,6 +46,14 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
 @@foreign(symbol_name="mxs_eprint_obj")   func eprint(x: any) -> nil;
 )MXS";
 
+    // The new object-model prelude (progress09 ④). Values are real core::MXObject*; the print
+    // family binds via generic @@foreign to the polymorphic print over MXObject::repr() (defined
+    // in core.bc). No per-function hardcoding (D3).
+    constexpr const char *kCorePrelude = R"MXS(
+@@foreign(symbol_name="mxs_println_object") func println(x: any) -> nil;
+@@foreign(symbol_name="mxs_print_object")   func print(x: any) -> nil;
+)MXS";
+
     std::string read_file(const std::string &path, bool &ok) {
         std::ifstream f(path);
         if (!f) {
@@ -55,7 +66,9 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
         return ss.str();
     }
 
-    std::string runtime_bc_path() {
+    // Locate a bitcode file (runtime.bc / core.bc): next to the executable first, then a few
+    // common build-relative locations.
+    std::string find_bc(const std::string &name) {
 #if defined(__linux__)
         char buf[4096];
         const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -64,15 +77,18 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
             std::string p(buf);
             const auto slash = p.find_last_of('/');
             if (slash != std::string::npos) {
-                std::string c = p.substr(0, slash) + "/runtime.bc";
+                std::string c = p.substr(0, slash) + "/" + name;
                 if (std::ifstream(c)) return c;
             }
         }
 #endif
-        for (const char *c : { "runtime.bc", "build/bin/runtime.bc", "bin/runtime.bc" })
-            if (std::ifstream(c)) return c;
+        for (const std::string base :
+             { std::string{}, std::string{ "build/bin/" }, std::string{ "bin/" } })
+            if (std::ifstream(base + name)) return base + name;
         return "";
     }
+    std::string runtime_bc_path() { return find_bc("runtime.bc"); }
+    std::string core_bc_path() { return find_bc("core.bc"); }
 }// namespace
 
 int main(int argc, char **argv) {
@@ -110,6 +126,42 @@ int main(int argc, char **argv) {
             return 1;
         }
         return mxs::jit::run(std::move(module), std::move(context), runtime_bc_path());
+    }
+
+    // New object model (progress09 ④): values are real core::MXObject*; arithmetic emits the
+    // typed core ABI (mxs_int_*), linked from core.bc. Seed slice (int arithmetic + print).
+    if (args.size() == 2 && args[0] == "run-core") {
+        bool ok = false;
+        const std::string source = read_file(args[1], ok);
+        if (!ok) {
+            std::cerr << "error: cannot open " << args[1] << "\n";
+            return 1;
+        }
+        auto tu = parser::parse_to_ast(source, args[1]);
+        if (!tu) {
+            std::cerr << "error: failed to parse " << args[1] << "\n";
+            return 1;
+        }
+        if (auto prelude = parser::parse_to_ast(kCorePrelude, "<core-prelude>")) {
+            tu->statements.insert(tu->statements.begin(),
+                                  std::make_move_iterator(prelude->statements.begin()),
+                                  std::make_move_iterator(prelude->statements.end()));
+        }
+        auto context = std::make_unique<llvm::LLVMContext>();
+        auto module = mxs::backend::codegen::compile_core(*tu, *context, args[1]);
+        if (!module) {
+            std::cerr << "error: core codegen failed for " << args[1] << "\n";
+            return 1;
+        }
+        const int rc =
+                mxs::jit::run(std::move(module), std::move(context), /*runtimeBc=*/"",
+                              /*entry=*/"main", core_bc_path());
+        // One-shot run: the program's output is done. Exit immediately, skipping global/atexit
+        // teardown — JIT'd code may have registered __cxa_atexit handlers whose code lives in
+        // now-freed JIT memory (the standard ORC one-shot-runner shutdown hazard). (REPL paths
+        // return through jit::run normally and are unaffected.)
+        std::fflush(nullptr);
+        std::_Exit(rc);
     }
 
     if (args.size() == 2 &&

@@ -110,10 +110,21 @@ the canonical design and supersedes the flat model.
   `mxs_retain`/`mxs_release`, …). This is what the JIT links in so those symbols resolve and LLVM
   can inline across the mxs/lib boundary (D6). (Removed a stray unused `llvm/IR/Instruction.h`
   include from MXObject.cpp so the core sources are LLVM-free and lower to plain bitcode.)
-- NEXT in ④: have the JIT load `core.bc`; add a new-object-model codegen path that emits the type
-  ABI calls (literals→`mxs_*_from_literal`, ops→`mxs_*_add`/…, vars→`MXLeftValue`, temporaries
-  retained/released per D8) + a polymorphic print over `MXObject::repr`; prove `println(2+3)`→5
-  through real `MXInteger`s; then `match`/Error, `**`/`[...]`, retire the flat runtime.
+- **End-to-end through the new model — works.** The JIT now links `core.bc` too (`jit::run` gained
+  a `coreBcPath`); `backend::compile_core` is a new codegen path that emits the typed core ABI
+  (int literals→`mxs_int_from_i64`, `+ - * / %`→`mxs_int_*`, generic calls), and a polymorphic
+  print (`mxs_print_object`/`mxs_println_object` over `MXObject::repr()`) bound via the `@@foreign`
+  `kCorePrelude` (no hardcoding). Driver: `mxs run-core <file>`. **Verified in Docker:**
+  `run-core` of `println(2+3)`/`2+3*4`/`100-58` → `5` / `14` / `42` — real `MXInteger`s arithmetic
+  + bitcode-linked print, JIT'd. (`-mno-outline-atomics` on the core.bc compile so AArch64 atomic
+  RMWs are inline, not compiler-rt outline-helper calls the JIT can't resolve.)
+- **Shutdown:** a one-shot `run-core` flushes and `_Exit`s after the program returns — JIT'd code
+  can register `__cxa_atexit` handlers whose code lives in freed JIT memory (the standard ORC
+  one-shot-runner teardown hazard); the REPL path returns through `jit::run` normally. (Proper
+  fix — run the platform's deinitializers before teardown — is a later cleanup.)
+- NEXT in ④: grow `compile_core` to variables (as `MXLeftValue`, retain/release per D8), control
+  flow, the other types/operators (float/bool/str/list, comparisons, `**`, `[...]`/subscript),
+  and `match`/Error; then retire the flat object-mode runtime + native numeric slice.
 
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.

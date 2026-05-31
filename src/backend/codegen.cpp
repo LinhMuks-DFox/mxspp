@@ -554,4 +554,170 @@ namespace mxs::backend::codegen {
         return module;
     }
 
+    // ===================== new object-model lowering (core types) =====================
+    // Seed of the rewired codegen (progress09 ④). Values are real core::MXObject* and operators
+    // emit the typed core ABI (mxs_int_add, …) defined in core.bc — which the JIT links in, so
+    // LLVM can inline the bodies across the boundary (D6). Minimal slice: functions, integer
+    // literals, int arithmetic, generic calls (the stdlib resolves via @@foreign — no per-function
+    // hardcoding, D3). Variables / control flow / other types grow this path to replace compile_obj.
+    namespace {
+        const char *core_int_op(const std::string &op) {
+            if (op == "+") return "mxs_int_add";
+            if (op == "-") return "mxs_int_sub";
+            if (op == "*") return "mxs_int_mul";
+            if (op == "/") return "mxs_int_div";
+            if (op == "%") return "mxs_int_mod";
+            return nullptr;
+        }
+
+        struct CoreGen {
+            llvm::Module *M;
+            llvm::IRBuilder<> &B;
+            llvm::LLVMContext &C;
+            llvm::Type *i64, *voidTy;
+            llvm::PointerType *ptr;
+            const std::unordered_map<std::string, llvm::Function *> &funcs;
+            llvm::Function *curFn = nullptr;
+            bool inMain = false;
+            bool ok = true;
+
+            void err(const std::string &m) {
+                std::cerr << "core-codegen: " << m << "\n";
+                ok = false;
+            }
+            llvm::Function *rt(const char *name, llvm::Type *ret,
+                               llvm::ArrayRef<llvm::Type *> args) {
+                if (auto *f = M->getFunction(name)) return f;
+                return llvm::Function::Create(llvm::FunctionType::get(ret, args, false),
+                                              llvm::Function::ExternalLinkage, name, M);
+            }
+            bool terminated() {
+                auto *bb = B.GetInsertBlock();
+                return bb && bb->getTerminator();
+            }
+
+            llvm::Value *expr(const ast::MXASTNode *n) {
+                if (const auto *il = dynamic_cast<const ast::IntegerLiteral *>(n))
+                    return B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }),
+                                        { llvm::ConstantInt::get(i64, il->value, true) });
+                if (const auto *bo = dynamic_cast<const ast::BinaryOp *>(n)) {
+                    if (const char *sym = core_int_op(bo->op)) {
+                        llvm::Value *l = expr(bo->left.get());
+                        llvm::Value *r = expr(bo->right.get());
+                        if (!l || !r) return nullptr;
+                        return B.CreateCall(rt(sym, ptr, { ptr, ptr }), { l, r });
+                    }
+                    err("unsupported operator '" + bo->op + "' (core slice: + - * / %)");
+                    return nullptr;
+                }
+                if (const auto *call = dynamic_cast<const ast::FunctionCall *>(n)) {
+                    auto it = funcs.find(call->name);
+                    if (it == funcs.end()) {
+                        err("call to unknown function '" + call->name + "'");
+                        return nullptr;
+                    }
+                    llvm::Function *f = it->second;
+                    std::vector<llvm::Value *> argv;
+                    for (const auto &a : call->args) {
+                        llvm::Value *v = expr(a.get());
+                        if (!v) return nullptr;
+                        argv.push_back(v);
+                    }
+                    if (f->getReturnType()->isVoidTy()) {
+                        B.CreateCall(f, argv);
+                        return llvm::ConstantPointerNull::get(ptr);
+                    }
+                    return B.CreateCall(f, argv, "call");
+                }
+                err("unsupported expression in the core slice");
+                return nullptr;
+            }
+
+            void stmt(const ast::MXASTNode *n) {
+                if (const auto *blk = dynamic_cast<const ast::Block *>(n)) {
+                    for (const auto &s : blk->statements) {
+                        if (terminated()) break;
+                        stmt(s.get());
+                    }
+                    return;
+                }
+                if (const auto *es = dynamic_cast<const ast::ExprStatement *>(n)) {
+                    if (es->expr) expr(es->expr.get());
+                    return;
+                }
+                if (const auto *rs = dynamic_cast<const ast::ReturnStatement *>(n)) {
+                    if (rs->value)
+                        expr(rs->value.get());// side effects (value conv: later)
+                    if (inMain) B.CreateRet(llvm::ConstantInt::get(i64, 0));
+                    else
+                        B.CreateRetVoid();
+                    return;
+                }
+                err("unsupported statement in the core slice");
+            }
+
+            void emitFunction(const ast::FunctionDef *fn) {
+                curFn = funcs.at(fn->name);
+                inMain = fn->name == "main";
+                B.SetInsertPoint(llvm::BasicBlock::Create(C, "entry", curFn));
+                if (fn->body) stmt(fn->body.get());
+                if (!terminated()) {
+                    if (inMain) B.CreateRet(llvm::ConstantInt::get(i64, 0));
+                    else
+                        B.CreateRetVoid();
+                }
+            }
+        };
+    }// namespace
+
+    std::unique_ptr<llvm::Module> compile_core(const ast::TranslationUnit &tu,
+                                               llvm::LLVMContext &llvmContext,
+                                               const std::string &moduleName) {
+        auto module = std::make_unique<llvm::Module>(moduleName, llvmContext);
+        llvm::IRBuilder<> B(llvmContext);
+        auto *i64 = llvm::Type::getInt64Ty(llvmContext);
+        auto *voidTy = llvm::Type::getVoidTy(llvmContext);
+        auto *ptr = llvm::PointerType::get(llvmContext, 0);
+
+        std::unordered_map<std::string, llvm::Function *> funcs;
+        bool hasMain = false;
+        for (const auto &s : tu.statements) {
+            const auto *fn = dynamic_cast<const ast::FunctionDef *>(s.get());
+            if (!fn) continue;
+            std::vector<llvm::Type *> argTys(fn->params.size(), ptr);
+            llvm::Type *ret =
+                    fn->name == "main"
+                            ? i64
+                            : ((fn->returnTypeName && *fn->returnTypeName == "nil")
+                                       ? voidTy
+                                       : ptr);
+            const std::string sym =
+                    fn->isForeign
+                            ? (fn->foreignSymbol.empty() ? fn->name : fn->foreignSymbol)
+                            : fn->name;
+            auto *f = llvm::Function::Create(llvm::FunctionType::get(ret, argTys, false),
+                                             llvm::Function::ExternalLinkage, sym,
+                                             module.get());
+            funcs[fn->name] = f;
+            if (fn->name == "main") hasMain = true;
+        }
+        if (!hasMain) {
+            std::cerr << "core-codegen: program has no main()\n";
+            return nullptr;
+        }
+        CoreGen g{ module.get(), B, llvmContext, i64, voidTy, ptr, funcs };
+        for (const auto &s : tu.statements)
+            if (const auto *fn = dynamic_cast<const ast::FunctionDef *>(s.get()))
+                if (!fn->isForeign) g.emitFunction(fn);
+        if (!g.ok) return nullptr;
+
+        std::string err;
+        llvm::raw_string_ostream os(err);
+        if (llvm::verifyModule(*module, &os)) {
+            std::cerr << "core-codegen: verification failed:\n" << os.str();
+            return nullptr;
+        }
+        return module;
+    }
+
 }// namespace mxs::backend::codegen

@@ -22,9 +22,9 @@ namespace mxs::backend::codegen {
         llvm::Module *module;
         llvm::IRBuilder<> *builder;
         std::unordered_map<std::string, llvm::AllocaInst *> namedValues;// locals + params
-        std::unordered_map<std::string, llvm::Function *> functions;    // by name
+        std::unordered_map<std::string, llvm::Function *> functions;// by name
         llvm::Function *currentFunction = nullptr;
-        std::vector<llvm::BasicBlock *> breakTargets;   // innermost loop exit
+        std::vector<llvm::BasicBlock *> breakTargets;// innermost loop exit
         std::vector<llvm::BasicBlock *> continueTargets;// innermost loop continue
     };
 
@@ -46,5 +46,14 @@ namespace mxs::backend::codegen {
     std::unique_ptr<llvm::Module> compile_obj(const frontend::ast::TranslationUnit &tu,
                                               llvm::LLVMContext &llvmContext,
                                               const std::string &moduleName = "mxs_obj");
+
+    // New object-model lowering (progress09 ④): values are real core::MXObject* and operators
+    // emit the typed core ABI (mxs_int_add, …) defined in core.bc, which the JIT links in.
+    // Seed slice: functions, integer literals, int arithmetic, and generic calls (the stdlib —
+    // println, … — resolves via @@foreign, no per-function hardcoding). Variables, control flow,
+    // and the other types follow as this path grows to replace compile_obj.
+    std::unique_ptr<llvm::Module>
+    compile_core(const frontend::ast::TranslationUnit &tu, llvm::LLVMContext &llvmContext,
+                 const std::string &moduleName = "mxs_core");
 
 }// namespace mxs::backend::codegen

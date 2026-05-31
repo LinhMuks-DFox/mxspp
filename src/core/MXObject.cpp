@@ -2,6 +2,8 @@
 #include "mxspp/core/MXPopulationManager.h"
 #include "mxspp/core/MXType.h"
 #include "mxspp/core/_type_def.h"
+
+#include <cstdio>
 namespace mxs::core {
 
     MXObject::MXObject(bool is_static) : is_static(is_static) {
@@ -67,5 +69,13 @@ void mxs_retain(const mxs::core::MXObject *o) {
 }
 void mxs_release(const mxs::core::MXObject *o) {
     if (o) o->release();
+}
+
+// Polymorphic print over any MXObject via its virtual repr() (one entry point, any type).
+void mxs_print_object(const mxs::core::MXObject *o) {
+    std::fprintf(stdout, "%s", o ? o->repr().c_str() : "nil");
+}
+void mxs_println_object(const mxs::core::MXObject *o) {
+    std::fprintf(stdout, "%s\n", o ? o->repr().c_str() : "nil");
 }
 }

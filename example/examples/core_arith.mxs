@@ -1,0 +1,14 @@
+# New object-model smoke test (progress09 ④): integer arithmetic + print run through the real
+# MXInteger C++ type (linked from core.bc), not the flat tagged-union runtime.
+# Run with:  mxs run-core example/examples/core_arith.mxs
+# Expected output:
+#   5
+#   14
+#   42
+
+func main() -> int {
+    println(2 + 3);       # 5
+    println(2 + 3 * 4);   # 14 — precedence: real MXInteger mul then add
+    println(100 - 58);    # 42
+    return 0;
+}

@@ -40,7 +40,7 @@ foreach(src IN LISTS CORE_BC_SOURCES)
     add_custom_command(OUTPUT ${out}
             COMMAND ${CMAKE_CXX_COMPILER} -emit-llvm -c
                     ${CMAKE_CURRENT_SOURCE_DIR}/${src} -o ${out}
-                    -std=c++23 -stdlib=libc++ -fPIC
+                    -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics
                     -I ${CMAKE_CURRENT_SOURCE_DIR}/../../include
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src}
             COMMENT "core -> bitcode: ${src}")
