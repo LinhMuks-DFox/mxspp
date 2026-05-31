@@ -726,6 +726,12 @@ namespace mxs::backend::codegen {
                 if (!t || !i) return nullptr;
                 return B.CreateCall(rt("mxs_arraylist_get", ptr, { ptr, ptr }), { t, i });
             }
+            if (const auto *me = dynamic_cast<const ast::MemberExpr *>(n)) {
+                llvm::Value *t = expr(me->target.get());
+                if (!t) return nullptr;
+                return B.CreateCall(rt("mxs_get_attr", ptr, { ptr, ptr }),
+                                    { t, B.CreateGlobalStringPtr(me->name, "attr") });
+            }
             if (const auto *id = dynamic_cast<const ast::Identifier *>(n)) {
                 auto it = locals.find(id->name);
                 if (it == locals.end()) {

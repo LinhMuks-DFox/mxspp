@@ -166,6 +166,17 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     return o->get_rtti().name == t ? 1 : 0;// user/class types: match by RTTI name
 }
 
+// Member access `obj.name` (read). For an MXError: `msg`/`message` and `type`/`kind`. Other
+// objects have no built-in attributes yet (full member/method dispatch waits on OOP) -> nil.
+MXObject *mxs_get_attr(const MXObject *o, const char *name) {
+    const std::string n = name ? name : "";
+    if (const auto *e = as<MXError>(o)) {
+        if (n == "msg" || n == "message") return new MXString(e->message());
+        if (n == "type" || n == "kind") return new MXString(e->error_type());
+    }
+    return new mxs::builtin::MXNil();
+}
+
 // `raise` / `exit` as functions (progress06: `raise` is a special form of `exit` — exit with
 // error). Both terminate the process immediately (flush + _Exit, skipping the ORC exit-teardown
 // hazard). raise prints the error object; exit uses the given integer code.

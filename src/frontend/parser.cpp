@@ -88,7 +88,7 @@ namespace mxs::frontend::parser {
                     g::interface_member, g::enum_def, g::enum_variant, g::type_def,
                     g::field_decl, g::annotation, g::annotation_arg, g::match_expr,
                     g::case_clause, g::bind_pattern, g::wildcard_pattern, g::block_expr,
-                    g::list_literal, g::index_op>,
+                    g::list_literal, g::index_op, g::member_op>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -148,8 +148,13 @@ namespace mxs::frontend::parser {
                 idx->target = std::move(base);
                 idx->index = to_expr(*c.children[0]);
                 base = std::move(idx);
+            } else if (c.is_type<g::member_op>()) {
+                auto mem = mk<ast::MemberExpr>();
+                mem->target = std::move(base);
+                mem->name = content_of(*c.children[0]);// member_op's identifier child
+                base = std::move(mem);
             }
-            // member access (.id) / generic_inst / `?` are not lowered yet.
+            // generic_inst / `?` are not lowered yet.
         }
         return base;
     }

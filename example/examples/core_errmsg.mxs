@@ -1,0 +1,15 @@
+# Member access on errors (run-core): the matrix-example style `println(err.msg)`.
+# Expected: 5 / integer division or modulo by zero / ZeroDivisionError
+func safe(a: int, b: int) -> int { return a / b; }
+func main() -> int {
+    let x = match (safe(10, 2)) {
+        case v: int => { v; }
+        case e: Error => { println(e.msg); 0; }
+    };
+    println(x);                              # 5
+    let y = match (safe(10, 0)) {
+        case v: int => { v; }
+        case e: Error => { println(e.msg); println(e.kind); 0; }
+    };
+    return 0;
+}

@@ -16,6 +16,12 @@ namespace mxs::core {
                          bool is_static = false);
 
         ~MXError() override;
+
+        [[nodiscard]] auto message() const -> const message_t & { return message_; }
+        [[nodiscard]] auto error_type() const -> const error_type_name_t & {
+            return error_type_;
+        }
+
         // --- Overrides ---
         [[nodiscard]] auto repr() const -> repr_t override;
 

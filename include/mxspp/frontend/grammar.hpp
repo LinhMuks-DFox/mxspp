@@ -156,13 +156,13 @@ namespace mxs::frontend::grammar {
                      identifier// Must be last to avoid greedily matching keywords
                      > { };
 
-    // Subscript `[expr]` is a named postfix op so the parser can build an index expression.
+    // Named postfix ops so the parser can tell them apart: member access `.name` and subscript.
+    struct member_op : pegtl::seq<pegtl::one<'.'>, ignored, identifier> { };
     struct index_op
         : pegtl::seq<pegtl::one<'['>, ignored, expression, ignored, pegtl::one<']'>> { };
     struct postfix_op
-        : pegtl::sor<pegtl::seq<ignored, pegtl::one<'.'>, ignored, identifier>,
-                     pegtl::seq<ignored, index_op>, pegtl::seq<ignored, generic_inst>,
-                     pegtl::seq<ignored, call_args>,
+        : pegtl::sor<pegtl::seq<ignored, member_op>, pegtl::seq<ignored, index_op>,
+                     pegtl::seq<ignored, generic_inst>, pegtl::seq<ignored, call_args>,
                      pegtl::seq<ignored, pegtl::one<'?'>>> { };
 
     struct postfix_expr : pegtl::seq<primary_expr, pegtl::star<postfix_op>> { };

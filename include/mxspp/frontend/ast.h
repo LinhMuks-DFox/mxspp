@@ -385,6 +385,16 @@ namespace mxs::frontend {
             codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
+        // Member access (read): `target.name` (e.g. `err.msg`). Object-mode only.
+        class MemberExpr : public virtual Expression {
+        public:
+            MemberExpr() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Expression> target;
+            std::string name;
+            llvm::Value *
+            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
         // A subscript: `target[index]` (e.g. ArrayList element access). Object-mode only.
         class IndexExpr : public virtual Expression {
         public:

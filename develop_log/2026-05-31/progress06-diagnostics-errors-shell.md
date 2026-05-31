@@ -68,7 +68,14 @@ Mux's confirmed design (the `case {}`/`case error{}` sketch was scrapped; his th
   exits(1); `mxs_exit(code)` exits with the integer code (both flush + `_Exit`, skipping the ORC
   teardown hazard). Removed `K_RAISE` from the reserved words and `raise_expr` from the grammar, so
   `raise` is an ordinary identifier/function. Verified (`example/examples/core_raise.mxs`):
-  `exit(2)` ends the program with code 2. (Still TODO: `err.msg` needs member access; exhaustiveness.)
+  `exit(2)` ends the program with code 2.
+- **Member access** `err.msg` works (the matrix-example style): `member_op` (`.name`) grammar +
+  `MemberExpr` AST + `mxs_get_attr(obj, name)` runtime (MXError exposes `msg`/`message` and
+  `type`/`kind`; other objects → nil until OOP fields land). Verified
+  (`example/examples/core_errmsg.mxs`): `case e: Error => { println(e.msg); println(e.kind); }`
+  prints the message + "ZeroDivisionError". (Minor: `.type` doesn't parse — `type` is a reserved
+  word; use `.kind`. Allowing keywords as member names is a small grammar follow-up. Exhaustiveness
+  checking still TODO.)
 
 ## Error model — design (Mux, 2026-05-31): `match`-based, no `raise` keyword
 Supersedes the docs §6 `raise`/`match` sketch and progress05's note.

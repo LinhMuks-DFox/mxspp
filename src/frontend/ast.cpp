@@ -207,6 +207,10 @@ namespace mxs::frontend::ast {
         std::cerr << "codegen: subscript requires object mode (mxs run-core)\n";
         return nullptr;
     }
+    llvm::Value *MemberExpr::codegen(CodegenContext &) const {
+        std::cerr << "codegen: member access requires object mode (mxs run-core)\n";
+        return nullptr;
+    }
 
     // ===================== Statements =====================
     void Block::codegen(CodegenContext &ctx) const {
