@@ -30,10 +30,29 @@ Good error reporting (syntax errors, numerical/runtime errors) and an interactiv
   defining `sq`/`fib` then evaluating `sq(7)`=49, `1+2*3`=7, `fib(10)`=55. (v1: single-line defs,
   int expressions; multi-line + typed eval later.)
 
+## Syntax-error diagnostics — improved (2026-05-31)
+Two complementary improvements to `parse_to_ast`, both frontend-only (no grammar surgery, so no
+backtracking/regression risk):
+
+- **Friendly messages.** `friendly_message()` translates PEGTL's raw rule-match text into readable
+  errors: `parse error matching tao::pegtl::one<'}'>` → `expected '}'`; the top-level `eof` →
+  `expected end of input`. Unrecognized shapes fall through to the original text.
+- **Furthest-progress position.** A custom PEGTL control (`error_tracer`, passed as the 4th
+  `pt::parse` template arg) records the furthest input position any rule was *attempted* at — it
+  only observes, never changes what matches. PEGTL otherwise reports the position of the `must<>`
+  that threw, which collapses to the *block opening* whenever the block matches zero statements
+  (a missing `;` or a stray token). When the parser actually progressed beyond the throw point, the
+  diagnostic now points there with `unexpected token`.
+- Verified in Docker (rebuild + `ctest` 2/2, example sweep unchanged at 14/17): `return 0 }` (missing
+  `;`) now reports `1:31` at the `}` (was `1:22`); `let x = ;` reports `1:30` at the `;` (was
+  `1:22`); `func f( -> int` reports `1:9: expected ')'`; an unterminated block reports
+  `expected '}'`; multi-line sources report the correct line:col.
+
 ## Open / TODO
-- **Friendly messages**: replace raw `parse error matching tao::pegtl::one<'}'>` with `expected '}'`
-  (PEGTL custom error messages via a control/`raise_message`), and add more `must<>` anchors
-  (after `func`, `if`, `(` in calls, `;` where safe — must not break block_expr's trailing expr).
+- **More precise messages / anchors**: `unexpected token` is generic; deriving "expected X" at the
+  furthest point needs grammar introspection. Adding more `must<>` anchors (after `func`, `if`, call
+  `(`, `;` where safe) would let the must<>-message path cover more cases — must not break
+  block_expr's trailing expr.
 - **Numerical / runtime errors**: DONE for unrecoverable panics — `mxs_panic(msg)` runtime
   (stderr + exit 1) + a codegen guard on integer `/` and `%` (panics "division by zero").
   Verified: `10/2`->5, `10/0`->panic+exit1. STILL TODO: the *recoverable* value-based Error model
@@ -47,3 +66,8 @@ Good error reporting (syntax errors, numerical/runtime errors) and an interactiv
   safe `must<>` anchors (block `}`, func_sig `)`). Verified in Docker: no sweep regression; broken
   programs report a located error with a caret. Next: friendlier messages + more anchors, then the
   Error model (raise/panic/match + runtime checks) and the REPL shell.
+- 2026-05-31 [ai] Friendly messages (`expected '}'`/`')'` instead of raw PEGTL text) +
+  furthest-progress position tracking (custom `error_tracer` control) so a missing `;` / stray token
+  points at the real spot instead of the block opening. Frontend-only, no grammar change; `ctest`
+  2/2, example sweep unchanged (14/17). Next: the recoverable Error model (raise/match) — overlaps
+  the object model in progress05 — plus runtime checks once containers exist.

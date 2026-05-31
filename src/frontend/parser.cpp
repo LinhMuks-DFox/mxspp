@@ -17,6 +17,32 @@ namespace mxs::frontend::parser {
     namespace g = mxs::frontend::grammar;
 
     // ===================================================================
+    // Furthest-progress tracking
+    // ===================================================================
+    // PEGTL reports the position of the `must<>` that threw, which is often far from the
+    // real mistake: a missing `;` makes the enclosing block match zero statements, so its
+    // `must<'}'>` fails right at the block's opening — blaming `}` at the wrong place. This
+    // control records the furthest input position any rule was *attempted* at, a good
+    // heuristic for "where parsing actually got stuck". It only observes; it never changes
+    // what matches, so it cannot alter the parse result.
+    namespace {
+        struct furthest_t {
+            std::size_t byte = 0, line = 1, column = 1;
+        };
+        thread_local furthest_t g_furthest;
+
+        template<typename Rule>
+        struct error_tracer : pegtl::normal<Rule> {
+            template<typename ParseInput, typename... States>
+            static void start(const ParseInput &in, States &&...st) noexcept {
+                const auto p = in.position();
+                if (p.byte >= g_furthest.byte) g_furthest = { p.byte, p.line, p.column };
+                pegtl::normal<Rule>::start(in, st...);
+            }
+        };
+    }// namespace
+
+    // ===================================================================
     // parse_tree selectors
     // ===================================================================
     // Left-associative fold for binary-operator list rules. After this runs, a binary
@@ -51,18 +77,16 @@ namespace mxs::frontend::parser {
                                   g::multiplicative_op, g::additive_op, g::range_op,
                                   g::relational_op, g::equality_op, g::logic_and_op,
                                   g::logic_or_op, g::assign_op>,
-            pt::remove_content::on<g::K_MUT, g::K_OVERRIDE, g::K_STATIC,
-                                   g::identifier_list, g::let_stmt, g::return_stmt,
-                                   g::expression_stmt, g::block, g::if_stmt,
-                                   g::for_in_stmt, g::loop_stmt, g::until_stmt,
-                                   g::do_until_stmt, g::break_stmt, g::continue_stmt,
-                                   g::assert_stmt, g::defer_stmt, g::func_def, g::func_sig,
-                                   g::param, g::call_args, g::class_def, g::field_def_class,
-                                   g::constructor_def, g::destructor_def, g::method_def,
-                                   g::operator_def, g::static_member, g::interface_def,
-                                   g::interface_member, g::enum_def, g::enum_variant,
-                                   g::type_def, g::field_decl, g::annotation,
-                                   g::annotation_arg>,
+            pt::remove_content::on<
+                    g::K_MUT, g::K_OVERRIDE, g::K_STATIC, g::identifier_list, g::let_stmt,
+                    g::return_stmt, g::expression_stmt, g::block, g::if_stmt,
+                    g::for_in_stmt, g::loop_stmt, g::until_stmt, g::do_until_stmt,
+                    g::break_stmt, g::continue_stmt, g::assert_stmt, g::defer_stmt,
+                    g::func_def, g::func_sig, g::param, g::call_args, g::class_def,
+                    g::field_def_class, g::constructor_def, g::destructor_def,
+                    g::method_def, g::operator_def, g::static_member, g::interface_def,
+                    g::interface_member, g::enum_def, g::enum_variant, g::type_def,
+                    g::field_decl, g::annotation, g::annotation_arg>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -221,8 +245,10 @@ namespace mxs::frontend::parser {
         auto f = mk<ast::FunctionDef>();
         for (const auto &c : n.children) {
             if (c->is_type<g::identifier>() && f->name.empty()) f->name = content_of(*c);
-            else if (c->is_type<g::func_sig>()) parse_params(*c, f->params, f->returnTypeName);
-            else if (c->is_type<g::block>()) f->body = to_block(*c);
+            else if (c->is_type<g::func_sig>())
+                parse_params(*c, f->params, f->returnTypeName);
+            else if (c->is_type<g::block>())
+                f->body = to_block(*c);
         }
         return f;
     }
@@ -241,9 +267,12 @@ namespace mxs::frontend::parser {
             for (const auto &c : n.children) {
                 if (c->is_type<g::K_MUT>()) f->isMut = true;
                 else if (c->is_type<g::identifier_list>())
-                    for (const auto &id : c->children) f->names.push_back(content_of(*id));
-                else if (c->is_type<g::type_spec>()) f->typeName = content_of(*c);
-                else f->value = to_expr(*c);
+                    for (const auto &id : c->children)
+                        f->names.push_back(content_of(*id));
+                else if (c->is_type<g::type_spec>())
+                    f->typeName = content_of(*c);
+                else
+                    f->value = to_expr(*c);
             }
             return f;
         }
@@ -256,7 +285,8 @@ namespace mxs::frontend::parser {
                     m->name = content_of(*c);
                 else if (c->is_type<g::func_sig>())
                     parse_params(*c, m->params, m->returnTypeName);
-                else if (c->is_type<g::block>()) m->body = to_block(*c);
+                else if (c->is_type<g::block>())
+                    m->body = to_block(*c);
             }
             return m;
         }
@@ -269,7 +299,8 @@ namespace mxs::frontend::parser {
                     parse_params(*c, k->params, rt);
                     sawSig = true;
                 } else if (c->is_type<g::identifier>() && sawSig && !k->baseName) {
-                    k->baseName = content_of(*c);// base-class ctor name (after the signature)
+                    k->baseName =
+                            content_of(*c);// base-class ctor name (after the signature)
                 } else if (c->is_type<g::block>()) {
                     k->body = to_block(*c);
                 }
@@ -286,10 +317,12 @@ namespace mxs::frontend::parser {
             auto o = mk<ast::OperatorDef>();
             for (const auto &c : n.children) {
                 if (c->is_type<g::K_OVERRIDE>()) o->isOverride = true;
-                else if (c->is_type<g::op_symbol>()) o->op = content_of(*c);
+                else if (c->is_type<g::op_symbol>())
+                    o->op = content_of(*c);
                 else if (c->is_type<g::func_sig>())
                     parse_params(*c, o->params, o->returnTypeName);
-                else if (c->is_type<g::block>()) o->body = to_block(*c);
+                else if (c->is_type<g::block>())
+                    o->body = to_block(*c);
             }
             return o;
         }
@@ -299,10 +332,12 @@ namespace mxs::frontend::parser {
     static std::unique_ptr<ast::MXASTNode> to_class(const Node &n) {
         auto c = mk<ast::ClassDef>();
         for (const auto &ch : n.children) {
-            if (ch->is_type<g::identifier>() && c->name.empty()) c->name = content_of(*ch);
+            if (ch->is_type<g::identifier>() && c->name.empty())
+                c->name = content_of(*ch);
             else if (ch->is_type<g::type_spec>() && !c->baseType)
                 c->baseType = content_of(*ch);
-            else if (auto m = to_member(*ch, false)) c->members.push_back(std::move(m));
+            else if (auto m = to_member(*ch, false))
+                c->members.push_back(std::move(m));
         }
         return c;
     }
@@ -310,7 +345,8 @@ namespace mxs::frontend::parser {
     static std::unique_ptr<ast::MXASTNode> to_interface(const Node &n) {
         auto i = mk<ast::InterfaceDef>();
         for (const auto &ch : n.children) {
-            if (ch->is_type<g::identifier>() && i->name.empty()) i->name = content_of(*ch);
+            if (ch->is_type<g::identifier>() && i->name.empty())
+                i->name = content_of(*ch);
             else if (ch->is_type<g::type_spec>() && !i->baseType)
                 i->baseType = content_of(*ch);
             else if (ch->is_type<g::interface_member>()) {
@@ -320,7 +356,8 @@ namespace mxs::frontend::parser {
                         m->name = content_of(*c);
                     else if (c->is_type<g::func_sig>())
                         parse_params(*c, m->params, m->returnTypeName);
-                    else if (c->is_type<g::block>()) m->body = to_block(*c);
+                    else if (c->is_type<g::block>())
+                        m->body = to_block(*c);
                 }
                 i->methods.push_back(std::move(m));
             }
@@ -331,7 +368,8 @@ namespace mxs::frontend::parser {
     static std::unique_ptr<ast::MXASTNode> to_enum(const Node &n) {
         auto e = mk<ast::EnumDef>();
         for (const auto &ch : n.children) {
-            if (ch->is_type<g::identifier>() && e->name.empty()) e->name = content_of(*ch);
+            if (ch->is_type<g::identifier>() && e->name.empty())
+                e->name = content_of(*ch);
             else if (ch->is_type<g::enum_variant>()) {
                 auto v = mk<ast::EnumVariant>();
                 for (const auto &c : ch->children)
@@ -347,13 +385,16 @@ namespace mxs::frontend::parser {
     static std::unique_ptr<ast::MXASTNode> to_typedef(const Node &n) {
         auto t = mk<ast::TypeDef>();
         for (const auto &ch : n.children) {
-            if (ch->is_type<g::identifier>() && t->name.empty()) t->name = content_of(*ch);
+            if (ch->is_type<g::identifier>() && t->name.empty())
+                t->name = content_of(*ch);
             else if (ch->is_type<g::field_decl>()) {
                 auto f = mk<ast::TypeField>();
                 for (const auto &c : ch->children) {
                     if (c->is_type<g::identifier_list>())
-                        for (const auto &id : c->children) f->names.push_back(content_of(*id));
-                    else if (c->is_type<g::type_spec>()) f->typeName = content_of(*c);
+                        for (const auto &id : c->children)
+                            f->names.push_back(content_of(*id));
+                    else if (c->is_type<g::type_spec>())
+                        f->typeName = content_of(*c);
                 }
                 t->fields.push_back(std::move(f));
             }
@@ -401,8 +442,10 @@ namespace mxs::frontend::parser {
                 if (c->is_type<g::K_MUT>()) s->isMut = true;
                 else if (c->is_type<g::identifier>() && s->var.empty())
                     s->var = content_of(*c);
-                else if (c->is_type<g::block>()) s->body = to_block(*c);
-                else s->iterable = to_expr(*c);
+                else if (c->is_type<g::block>())
+                    s->body = to_block(*c);
+                else
+                    s->iterable = to_expr(*c);
             }
             return s;
         }
@@ -454,7 +497,8 @@ namespace mxs::frontend::parser {
                 std::string k, v;
                 for (const auto &ac : c->children) {
                     if (ac->is_type<g::identifier>() && k.empty()) k = content_of(*ac);
-                    else if (ac->has_content()) v = unquote(content_of(*ac));
+                    else if (ac->has_content())
+                        v = unquote(content_of(*ac));
                 }
                 a.args.push_back({ k, v });
             }
@@ -462,17 +506,25 @@ namespace mxs::frontend::parser {
         return a;
     }
 
+    // Translate PEGTL's raw rule-match text into something a user can read:
+    //   "parse error matching tao::pegtl::one<'}'>"  ->  "expected '}'"
+    //   "...eof"                                      ->  "expected end of input"
+    // Falls back to the original text for shapes we don't special-case.
+    static std::string friendly_message(const std::string &raw) {
+        const std::string oneTag = "one<'";
+        const auto p = raw.find(oneTag);
+        if (p != std::string::npos && p + oneTag.size() < raw.size())
+            return std::string("expected '") + raw[p + oneTag.size()] + "'";
+        if (raw.find("eof") != std::string::npos) return "expected end of input";
+        return raw;
+    }
+
     // Render a syntax error as `name:line:col: syntax error: <msg>` plus the offending
-    // source line and a caret. (Positions are coarse for now — precise ones need `must<>`
-    // points in the grammar; a follow-up.)
+    // source line and a caret pointing at the column.
     static void report_syntax_error(std::string_view src, std::string_view name,
-                                    const pegtl::parse_error &e) {
-        std::size_t line = 1, col = 1;
-        if (!e.positions().empty()) {
-            line = e.positions().front().line;
-            col = e.positions().front().column;
-        }
-        std::cerr << name << ":" << line << ":" << col << ": syntax error: " << e.message()
+                                    std::size_t line, std::size_t col,
+                                    const std::string &msg) {
+        std::cerr << name << ":" << line << ":" << col << ": syntax error: " << msg
                   << "\n";
         std::size_t cur = 1, start = 0;
         for (std::size_t i = 0; i < src.size() && cur < line; ++i)
@@ -489,11 +541,18 @@ namespace mxs::frontend::parser {
 
     std::unique_ptr<ast::TranslationUnit> parse_to_ast(std::string_view source,
                                                        std::string_view source_name) {
+        g_furthest = furthest_t{};// reset furthest-progress tracking for this parse
         try {
             pegtl::memory_input<> in(source.data(), source.size(),
                                      std::string(source_name));
-            auto root = pt::parse<g::grammar, selector>(in);
-            if (!root) return nullptr;
+            auto root = pt::parse<g::grammar, selector, pegtl::nothing, error_tracer>(in);
+            if (!root) {
+                // The grammar didn't match without any must<> throwing (rare with the
+                // must<...eof> top rule); point at the furthest progress.
+                report_syntax_error(source, source_name, g_furthest.line,
+                                    g_furthest.column, "unexpected token");
+                return nullptr;
+            }
             auto tu = mk<ast::TranslationUnit>();
             std::vector<AnnotInfo> pending;
             for (const auto &c : root->children) {
@@ -510,7 +569,8 @@ namespace mxs::frontend::parser {
                             if (a.name != "foreign") continue;
                             fd->isForeign = true;
                             for (const auto &kv : a.args)
-                                if (kv.first == "symbol_name") fd->foreignSymbol = kv.second;
+                                if (kv.first == "symbol_name")
+                                    fd->foreignSymbol = kv.second;
                         }
                     }
                     tu->statements.push_back(std::move(s));
@@ -519,7 +579,25 @@ namespace mxs::frontend::parser {
             }
             return tu;
         } catch (const pegtl::parse_error &e) {
-            report_syntax_error(source, source_name, e);
+            std::size_t line = 1, col = 1;
+            std::string msg{ e.message() };// message() yields a string_view here
+            if (!e.positions().empty()) {
+                const auto &tp = e.positions().front();
+                line = tp.line;
+                col = tp.column;
+                // If parsing actually progressed beyond the must<> throw point, that
+                // further point is where the input really stopped making sense.
+                if (g_furthest.byte > tp.byte) {
+                    line = g_furthest.line;
+                    col = g_furthest.column;
+                    msg = "unexpected token";
+                } else {
+                    msg = friendly_message(msg);
+                }
+            } else {
+                msg = friendly_message(msg);
+            }
+            report_syntax_error(source, source_name, line, col, msg);
             return nullptr;
         }
     }
