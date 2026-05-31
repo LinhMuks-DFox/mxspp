@@ -76,9 +76,17 @@ builtins (object-mode prelude). Also added the **`**` power operator** (grammar 
   = `xs[i]`); ranges `for i in lo..hi` unchanged. Verified (`example/examples/core_iter.mxs`):
   `xs[1]=99` → `[1, 99, 3]`; summing `for x in xs` → 103; `for y in [10,20,30]` prints 10/20/30.
 
+## Polymorphic index/len over list + string (2026-05-31)
+`mxs_index_get` / `mxs_len` dispatch on the runtime type: subscript `o[i]`, `len(o)`, and
+`for x in o` now work for both ArrayList (element) and String (character). codegen lowers subscript
+and for-in to these generic ops (not the list-only ABIs); `len` binds to `mxs_len`. Verified
+(`example/examples/core_string.mxs`): `len("hello")`→5, `"hello"[1]`→`e`, `for c in s` prints each
+char; lists unchanged.
+
 ## Open / TODO
-- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics; string indexing/
-  iteration; Dict literal `[k: v]`; the static `Array`/`Tuple`; then `Matrix` (needs classes).
+- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics; subscript-assign
+  on strings (immutable — errors); Dict literal `[k: v]`; the static `Array`/`Tuple`; `Matrix`
+  (needs classes/OOP).
 - Static `Array` (POD vs boxed), `Tuple`, `Dict`. Then `Matrix` (after classes/methods).
 - Method-call syntax (`xs.append(v)`, `xs.length()`) once OOP dispatch lands; reconcile element rc.
 

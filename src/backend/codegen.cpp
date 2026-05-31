@@ -724,7 +724,8 @@ namespace mxs::backend::codegen {
                 llvm::Value *t = expr(ix->target.get());
                 llvm::Value *i = expr(ix->index.get());
                 if (!t || !i) return nullptr;
-                return B.CreateCall(rt("mxs_arraylist_get", ptr, { ptr, ptr }), { t, i });
+                // Generic: works for ArrayList elements and String characters.
+                return B.CreateCall(rt("mxs_index_get", ptr, { ptr, ptr }), { t, i });
             }
             if (const auto *me = dynamic_cast<const ast::MemberExpr *>(n)) {
                 llvm::Value *t = expr(me->target.get());
@@ -1018,9 +1019,8 @@ namespace mxs::backend::codegen {
                     listObj = expr(fs->iterable.get());
                     if (!listObj) return;
                     lo = llvm::ConstantInt::get(i64, 0);
-                    hi = B.CreateCall(
-                            toI64, { B.CreateCall(rt("mxs_arraylist_len", ptr, { ptr }),
-                                                  { listObj }) });
+                    hi = B.CreateCall(toI64, { B.CreateCall(rt("mxs_len", ptr, { ptr }),
+                                                            { listObj }) });
                 }
                 auto *ctr = allocaTy(i64, fs->var + ".i");
                 B.CreateStore(lo, ctr);
@@ -1042,7 +1042,7 @@ namespace mxs::backend::codegen {
                         B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }), { cur });
                 llvm::Value *iv =
                         isRange ? ctrObj
-                                : B.CreateCall(rt("mxs_arraylist_get", ptr, { ptr, ptr }),
+                                : B.CreateCall(rt("mxs_index_get", ptr, { ptr, ptr }),
                                                { listObj, ctrObj });
                 auto *cell = B.CreateCall(rt("mxs_lvalue_new", ptr, { ptr, i64 }),
                                           { iv, llvm::ConstantInt::get(i64, 0) });

@@ -20,6 +20,7 @@
 // These are the extern "C" symbols the new object-model codegen lowers operators to.
 
 namespace {
+    using mxs::builtin::MXArrayList;
     using mxs::builtin::MXBoolean;
     using mxs::builtin::MXFloat;
     using mxs::builtin::MXInteger;
@@ -164,6 +165,34 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     if (t == "ArrayList" || t == "List")
         return as<mxs::builtin::MXArrayList>(o) != nullptr;
     return o->get_rtti().name == t ? 1 : 0;// user/class types: match by RTTI name
+}
+
+// Generic length: ArrayList element count or String byte length, as an MXInteger. Used by
+// `len(...)` and `for x in xs`. Non-sized objects -> MXError.
+MXObject *mxs_len(const MXObject *o) {
+    if (const auto *l = as<MXArrayList>(o)) return l->length().release();
+    if (const auto *s = as<MXString>(o)) return s->length().release();
+    return new MXError("TypeError", "object has no length");
+}
+
+// Generic indexing `o[idx]`: ArrayList element (a borrow) or String character (a fresh 1-char
+// MXString). Used by subscript and `for x in xs`. Bad index / non-indexable -> MXError.
+MXObject *mxs_index_get(MXObject *o, MXObject *idx) {
+    const auto *ii = as<MXInteger>(idx);
+    if (!ii) return new MXError("TypeError", "index must be an integer");
+    bool ok = false;
+    const std::int64_t i = ii->to_i64(ok);
+    if (const auto *l = as<MXArrayList>(o)) {
+        MXObject *e = l->get(i);
+        return e ? e : new MXError("IndexError", "list index out of range");
+    }
+    if (const auto *s = as<MXString>(o)) {
+        const std::string &v = s->value();
+        if (i < 0 || static_cast<std::size_t>(i) >= v.size())
+            return new MXError("IndexError", "string index out of range");
+        return new MXString(std::string(1, v[static_cast<std::size_t>(i)]));
+    }
+    return new MXError("TypeError", "object is not indexable");
 }
 
 // Member access `obj.name` (read). For an MXError: `msg`/`message` and `type`/`kind`. Other

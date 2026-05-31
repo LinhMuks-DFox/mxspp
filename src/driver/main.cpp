@@ -52,7 +52,7 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
     constexpr const char *kCorePrelude = R"MXS(
 @@foreign(symbol_name="mxs_println_object")   func println(x: any) -> nil;
 @@foreign(symbol_name="mxs_print_object")     func print(x: any) -> nil;
-@@foreign(symbol_name="mxs_arraylist_len")    func len(xs: any) -> any;
+@@foreign(symbol_name="mxs_len")              func len(xs: any) -> any;
 @@foreign(symbol_name="mxs_arraylist_append") func append(xs: any, v: any) -> nil;
 @@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
 @@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
