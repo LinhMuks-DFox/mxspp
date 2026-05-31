@@ -96,7 +96,7 @@ MX_TEST(parse_accept_matrix) {
             { "@@opt(level=3) func f()->nil{}", true },
             { "@@template(T) func f()->nil{}", false },          // G5 positional annot arg
             { "@@foreign(lib=\"x\") func f()->int{ return 0; }", true },
-            { "@@foreign(lib=\"x\") func f()->int;", false },    // G6 bodyless foreign
+            { "@@foreign(lib=\"x\") func f()->int;", true },// bodyless @@foreign now parses (G6 done)
             { "import std.io as io;", true },
             { "static let x = 1;", true },
             { "export func f()->nil{}", true },
