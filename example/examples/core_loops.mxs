@@ -1,0 +1,13 @@
+# Variables (MXLeftValue), loops, comparisons on the real object model (run-core).
+func main() -> int {
+    let mut sum = 0;
+    for i in 1..5 { sum = sum + i; }   # 1+2+3+4
+    println(sum);                       # 10
+    let mut n = 5;
+    let mut acc = 1;
+    until (n == 0) { acc = acc * n; n = n - 1; }
+    println(acc);                       # 120
+    println(3 < 5);                     # true
+    println(!false);                    # true
+    return 0;
+}

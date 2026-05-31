@@ -13,6 +13,7 @@ namespace mxs::builtin {
 
         // --- MXObject overrides ---
         [[nodiscard]] auto repr() const -> core::repr_t override;// "nil"
+        [[nodiscard]] auto is_truthy() const -> bool override { return false; }
         auto equals(MXObjectConstBorrow other) -> bool override;
         [[nodiscard]] auto get_hash_code() const -> MXHashCode_t override;
 

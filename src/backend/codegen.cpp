@@ -555,18 +555,27 @@ namespace mxs::backend::codegen {
     }
 
     // ===================== new object-model lowering (core types) =====================
-    // Seed of the rewired codegen (progress09 ④). Values are real core::MXObject* and operators
-    // emit the typed core ABI (mxs_int_add, …) defined in core.bc — which the JIT links in, so
-    // LLVM can inline the bodies across the boundary (D6). Minimal slice: functions, integer
-    // literals, int arithmetic, generic calls (the stdlib resolves via @@foreign — no per-function
-    // hardcoding, D3). Variables / control flow / other types grow this path to replace compile_obj.
+    // The rewired codegen (progress09 ④). Values are real core::MXObject* and operators emit the
+    // typed core ABI (mxs_int_*, …) defined in core.bc, which the JIT links in so LLVM can inline
+    // across the boundary (D6). Variables are MXLeftValue binding cells (`let` immutable,
+    // `let mut` mutable; assignment goes through mxs_lvalue_update). The stdlib (println, …)
+    // resolves via @@foreign — no per-function hardcoding (D3). Arithmetic/compare currently lower
+    // to the integer ABI (full cross-type dynamic dispatch is a later step); strings/floats/bools/
+    // nil literals and containers are constructed via their own ABIs.
     namespace {
+        // Integer arithmetic / comparison operator -> core ABI symbol (typed-int path for now).
         const char *core_int_op(const std::string &op) {
             if (op == "+") return "mxs_int_add";
             if (op == "-") return "mxs_int_sub";
             if (op == "*") return "mxs_int_mul";
             if (op == "/") return "mxs_int_div";
             if (op == "%") return "mxs_int_mod";
+            if (op == "<") return "mxs_int_lt";
+            if (op == "<=") return "mxs_int_le";
+            if (op == ">") return "mxs_int_gt";
+            if (op == ">=") return "mxs_int_ge";
+            if (op == "==") return "mxs_int_eq";
+            if (op == "!=") return "mxs_int_ne";
             return nullptr;
         }
 
@@ -574,11 +583,14 @@ namespace mxs::backend::codegen {
             llvm::Module *M;
             llvm::IRBuilder<> &B;
             llvm::LLVMContext &C;
-            llvm::Type *i64, *voidTy;
+            llvm::Type *i64, *dbl, *voidTy;
             llvm::PointerType *ptr;
             const std::unordered_map<std::string, llvm::Function *> &funcs;
+            std::unordered_map<std::string, llvm::AllocaInst *>
+                    locals;// name -> alloca<MXLeftValue*>
             llvm::Function *curFn = nullptr;
             bool inMain = false;
+            std::vector<llvm::BasicBlock *> breakT, continueT;
             bool ok = true;
 
             void err(const std::string &m) {
@@ -595,79 +607,387 @@ namespace mxs::backend::codegen {
                 auto *bb = B.GetInsertBlock();
                 return bb && bb->getTerminator();
             }
+            llvm::BasicBlock *bb(const char *n) {
+                return llvm::BasicBlock::Create(C, n, curFn);
+            }
+            llvm::AllocaInst *allocaTy(llvm::Type *t, const std::string &nm) {
+                llvm::IRBuilder<> tmp(&curFn->getEntryBlock(),
+                                      curFn->getEntryBlock().begin());
+                return tmp.CreateAlloca(t, nullptr, nm);
+            }
+            llvm::Value *nil() { return B.CreateCall(rt("mxs_nil_new", ptr, {}), {}); }
+            // i1 truthiness of a boxed object (mxs_object_truthy != 0).
+            llvm::Value *truthy(llvm::Value *o) {
+                auto *t = B.CreateCall(rt("mxs_object_truthy", i64, { ptr }), { o }, "t");
+                return B.CreateICmpNE(t, llvm::ConstantInt::get(i64, 0), "tobool");
+            }
+            llvm::Value *boolFromI1(llvm::Value *c) {
+                return B.CreateCall(rt("mxs_bool_new", ptr, { i64 }),
+                                    { B.CreateZExt(c, i64, "b") });
+            }
+            // Create a binding cell owning `value`; record it under `name`.
+            void bind(const std::string &name, llvm::Value *value, bool mutable_) {
+                auto *cell =
+                        B.CreateCall(rt("mxs_lvalue_new", ptr, { ptr, i64 }),
+                                     { value, llvm::ConstantInt::get(i64, mutable_) });
+                auto *slot = allocaTy(ptr, name);
+                B.CreateStore(cell, slot);
+                locals[name] = slot;
+            }
 
-            llvm::Value *expr(const ast::MXASTNode *n) {
-                if (const auto *il = dynamic_cast<const ast::IntegerLiteral *>(n))
-                    return B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }),
-                                        { llvm::ConstantInt::get(i64, il->value, true) });
-                if (const auto *bo = dynamic_cast<const ast::BinaryOp *>(n)) {
-                    if (const char *sym = core_int_op(bo->op)) {
-                        llvm::Value *l = expr(bo->left.get());
-                        llvm::Value *r = expr(bo->right.get());
-                        if (!l || !r) return nullptr;
-                        return B.CreateCall(rt(sym, ptr, { ptr, ptr }), { l, r });
-                    }
-                    err("unsupported operator '" + bo->op + "' (core slice: + - * / %)");
+            llvm::Value *expr(const ast::MXASTNode *n);
+            llvm::Value *shortCircuit(const ast::BinaryOp *bo);
+            void stmt(const ast::MXASTNode *n);
+            void block(const ast::Block *blk) {
+                auto saved = locals;
+                for (const auto &s : blk->statements) {
+                    if (terminated()) break;
+                    stmt(s.get());
+                }
+                locals = saved;
+            }
+            void emitFunction(const ast::FunctionDef *fn);
+        };
+
+        llvm::Value *CoreGen::shortCircuit(const ast::BinaryOp *bo) {
+            const bool isAnd = bo->op == "&&";
+            llvm::Value *l = expr(bo->left.get());
+            if (!l) return nullptr;
+            llvm::Value *lc = truthy(l);
+            auto *entryBB = B.GetInsertBlock();
+            auto *rhsBB = bb(isAnd ? "and.rhs" : "or.rhs");
+            auto *contBB = bb(isAnd ? "and.cont" : "or.cont");
+            if (isAnd) B.CreateCondBr(lc, rhsBB, contBB);
+            else
+                B.CreateCondBr(lc, contBB, rhsBB);
+            B.SetInsertPoint(rhsBB);
+            llvm::Value *r = expr(bo->right.get());
+            if (!r) return nullptr;
+            llvm::Value *rc = truthy(r);
+            auto *rhsEnd = B.GetInsertBlock();
+            B.CreateBr(contBB);
+            B.SetInsertPoint(contBB);
+            auto *phi = B.CreatePHI(llvm::Type::getInt1Ty(C), 2, "logic");
+            phi->addIncoming(isAnd ? llvm::ConstantInt::getFalse(C)
+                                   : llvm::ConstantInt::getTrue(C),
+                             entryBB);
+            phi->addIncoming(rc, rhsEnd);
+            return boolFromI1(phi);
+        }
+
+        llvm::Value *CoreGen::expr(const ast::MXASTNode *n) {
+            if (const auto *il = dynamic_cast<const ast::IntegerLiteral *>(n))
+                return B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }),
+                                    { llvm::ConstantInt::get(i64, il->value, true) });
+            if (const auto *fl = dynamic_cast<const ast::FloatLiteral *>(n))
+                return B.CreateCall(rt("mxs_float_new", ptr, { dbl }),
+                                    { llvm::ConstantFP::get(dbl, fl->value) });
+            if (const auto *bl = dynamic_cast<const ast::BooleanLiteral *>(n))
+                return B.CreateCall(rt("mxs_bool_new", ptr, { i64 }),
+                                    { llvm::ConstantInt::get(i64, bl->value) });
+            if (dynamic_cast<const ast::NilLiteral *>(n)) return nil();
+            if (const auto *sl = dynamic_cast<const ast::StringLiteral *>(n))
+                return B.CreateCall(rt("mxs_str_new", ptr, { ptr }),
+                                    { B.CreateGlobalStringPtr(sl->value, "str") });
+            if (const auto *id = dynamic_cast<const ast::Identifier *>(n)) {
+                auto it = locals.find(id->name);
+                if (it == locals.end()) {
+                    err("unknown identifier '" + id->name + "'");
                     return nullptr;
                 }
-                if (const auto *call = dynamic_cast<const ast::FunctionCall *>(n)) {
-                    auto it = funcs.find(call->name);
-                    if (it == funcs.end()) {
-                        err("call to unknown function '" + call->name + "'");
+                auto *cell = B.CreateLoad(ptr, it->second, id->name);
+                return B.CreateCall(rt("mxs_lvalue_rvalue", ptr, { ptr }), { cell },
+                                    "rv");
+            }
+            if (const auto *bo = dynamic_cast<const ast::BinaryOp *>(n)) {
+                const std::string &op = bo->op;
+                if (op == "&&" || op == "||") return shortCircuit(bo);
+                if (op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=") {
+                    const auto *lid =
+                            dynamic_cast<const ast::Identifier *>(bo->left.get());
+                    if (!lid) {
+                        err("assignment target must be a variable");
                         return nullptr;
                     }
-                    llvm::Function *f = it->second;
-                    std::vector<llvm::Value *> argv;
-                    for (const auto &a : call->args) {
-                        llvm::Value *v = expr(a.get());
-                        if (!v) return nullptr;
-                        argv.push_back(v);
+                    auto it = locals.find(lid->name);
+                    if (it == locals.end()) {
+                        err("assignment to unknown variable '" + lid->name + "'");
+                        return nullptr;
                     }
-                    if (f->getReturnType()->isVoidTy()) {
-                        B.CreateCall(f, argv);
-                        return llvm::ConstantPointerNull::get(ptr);
+                    llvm::Value *rhs = expr(bo->right.get());
+                    if (!rhs) return nullptr;
+                    auto *cell = B.CreateLoad(ptr, it->second, lid->name);
+                    if (op != "=") {
+                        auto *cur = B.CreateCall(rt("mxs_lvalue_rvalue", ptr, { ptr }),
+                                                 { cell }, "rv");
+                        rhs = B.CreateCall(
+                                rt(core_int_op(op.substr(0, 1)), ptr, { ptr, ptr }),
+                                { cur, rhs });
                     }
-                    return B.CreateCall(f, argv, "call");
+                    // mxs_lvalue_update enforces immutability at runtime (returns an MXError on
+                    // a `let` binding); the result is the assignment's value.
+                    B.CreateCall(rt("mxs_lvalue_update", ptr, { ptr, ptr }),
+                                 { cell, rhs });
+                    return rhs;
                 }
-                err("unsupported expression in the core slice");
+                if (const char *sym = core_int_op(op)) {
+                    llvm::Value *l = expr(bo->left.get());
+                    llvm::Value *r = expr(bo->right.get());
+                    if (!l || !r) return nullptr;
+                    return B.CreateCall(rt(sym, ptr, { ptr, ptr }), { l, r });
+                }
+                err("unsupported binary operator '" + op + "'");
                 return nullptr;
             }
+            if (const auto *uo = dynamic_cast<const ast::UnaryOp *>(n)) {
+                llvm::Value *v = expr(uo->operand.get());
+                if (!v) return nullptr;
+                if (uo->op == "-")
+                    return B.CreateCall(rt("mxs_int_neg", ptr, { ptr }), { v });
+                if (uo->op == "!") return boolFromI1(B.CreateNot(truthy(v), "not"));
+                return v;// unary '+'
+            }
+            if (const auto *call = dynamic_cast<const ast::FunctionCall *>(n)) {
+                auto it = funcs.find(call->name);
+                if (it == funcs.end()) {
+                    err("call to unknown function '" + call->name + "'");
+                    return nullptr;
+                }
+                llvm::Function *f = it->second;
+                if (call->args.size() != f->arg_size()) {
+                    err("call to '" + call->name + "' expects " +
+                        std::to_string(f->arg_size()) + " argument(s), got " +
+                        std::to_string(call->args.size()));
+                    return nullptr;
+                }
+                std::vector<llvm::Value *> argv;
+                for (const auto &a : call->args) {
+                    llvm::Value *v = expr(a.get());
+                    if (!v) return nullptr;
+                    argv.push_back(v);
+                }
+                if (f->getReturnType()->isVoidTy()) {
+                    B.CreateCall(f, argv);
+                    return nil();
+                }
+                return B.CreateCall(f, argv, "call");
+            }
+            err("unsupported expression");
+            return nullptr;
+        }
 
-            void stmt(const ast::MXASTNode *n) {
-                if (const auto *blk = dynamic_cast<const ast::Block *>(n)) {
-                    for (const auto &s : blk->statements) {
-                        if (terminated()) break;
-                        stmt(s.get());
+        void CoreGen::stmt(const ast::MXASTNode *n) {
+            if (const auto *blk = dynamic_cast<const ast::Block *>(n)) {
+                block(blk);
+                return;
+            }
+            if (const auto *ls = dynamic_cast<const ast::LetStatement *>(n)) {
+                llvm::Value *v = ls->value ? expr(ls->value.get()) : nil();
+                if (!v) return;
+                for (const auto &nm : ls->names) bind(nm, v, ls->isMut);
+                return;
+            }
+            if (const auto *es = dynamic_cast<const ast::ExprStatement *>(n)) {
+                if (es->expr) expr(es->expr.get());
+                return;
+            }
+            if (const auto *rs = dynamic_cast<const ast::ReturnStatement *>(n)) {
+                if (inMain) {
+                    if (rs->value) {
+                        llvm::Value *v = expr(rs->value.get());
+                        if (!v) return;
+                        B.CreateRet(
+                                B.CreateCall(rt("mxs_int_to_i64", i64, { ptr }), { v }));
+                    } else {
+                        B.CreateRet(llvm::ConstantInt::get(i64, 0));
                     }
                     return;
                 }
-                if (const auto *es = dynamic_cast<const ast::ExprStatement *>(n)) {
-                    if (es->expr) expr(es->expr.get());
-                    return;
+                if (curFn->getReturnType()->isVoidTy()) {
+                    if (rs->value) expr(rs->value.get());
+                    B.CreateRetVoid();
+                } else {
+                    llvm::Value *v = rs->value ? expr(rs->value.get()) : nil();
+                    if (v) B.CreateRet(v);
                 }
-                if (const auto *rs = dynamic_cast<const ast::ReturnStatement *>(n)) {
-                    if (rs->value)
-                        expr(rs->value.get());// side effects (value conv: later)
-                    if (inMain) B.CreateRet(llvm::ConstantInt::get(i64, 0));
-                    else
-                        B.CreateRetVoid();
-                    return;
-                }
-                err("unsupported statement in the core slice");
+                return;
             }
+            if (const auto *is = dynamic_cast<const ast::IfStatement *>(n)) {
+                llvm::Value *cv = is->condition ? expr(is->condition.get()) : nullptr;
+                llvm::Value *cond = cv ? truthy(cv) : llvm::ConstantInt::getFalse(C);
+                auto *thenBB = bb("then");
+                auto *mergeBB = llvm::BasicBlock::Create(C, "ifcont");
+                auto *elseBB =
+                        is->elseBranch ? llvm::BasicBlock::Create(C, "else") : mergeBB;
+                B.CreateCondBr(cond, thenBB, elseBB);
+                B.SetInsertPoint(thenBB);
+                if (is->thenBlock) block(is->thenBlock.get());
+                if (!terminated()) B.CreateBr(mergeBB);
+                if (is->elseBranch) {
+                    curFn->insert(curFn->end(), elseBB);
+                    B.SetInsertPoint(elseBB);
+                    stmt(is->elseBranch.get());
+                    if (!terminated()) B.CreateBr(mergeBB);
+                }
+                curFn->insert(curFn->end(), mergeBB);
+                B.SetInsertPoint(mergeBB);
+                return;
+            }
+            if (const auto *lp = dynamic_cast<const ast::LoopStatement *>(n)) {
+                auto *bodyBB = bb("loop");
+                auto *afterBB = llvm::BasicBlock::Create(C, "loopend");
+                B.CreateBr(bodyBB);
+                B.SetInsertPoint(bodyBB);
+                continueT.push_back(bodyBB);
+                breakT.push_back(afterBB);
+                if (lp->body) block(lp->body.get());
+                if (!terminated()) B.CreateBr(bodyBB);
+                continueT.pop_back();
+                breakT.pop_back();
+                curFn->insert(curFn->end(), afterBB);
+                B.SetInsertPoint(afterBB);
+                return;
+            }
+            if (const auto *us = dynamic_cast<const ast::UntilStatement *>(n)) {
+                auto *condBB = bb("until.cond");
+                auto *bodyBB = llvm::BasicBlock::Create(C, "until.body");
+                auto *afterBB = llvm::BasicBlock::Create(C, "until.end");
+                B.CreateBr(condBB);
+                B.SetInsertPoint(condBB);
+                llvm::Value *cv = us->condition ? expr(us->condition.get()) : nullptr;
+                B.CreateCondBr(cv ? truthy(cv) : llvm::ConstantInt::getTrue(C), afterBB,
+                               bodyBB);
+                curFn->insert(curFn->end(), bodyBB);
+                B.SetInsertPoint(bodyBB);
+                continueT.push_back(condBB);
+                breakT.push_back(afterBB);
+                if (us->body) block(us->body.get());
+                if (!terminated()) B.CreateBr(condBB);
+                continueT.pop_back();
+                breakT.pop_back();
+                curFn->insert(curFn->end(), afterBB);
+                B.SetInsertPoint(afterBB);
+                return;
+            }
+            if (const auto *ds = dynamic_cast<const ast::DoUntilStatement *>(n)) {
+                auto *bodyBB = bb("do.body");
+                auto *condBB = llvm::BasicBlock::Create(C, "do.cond");
+                auto *afterBB = llvm::BasicBlock::Create(C, "do.end");
+                B.CreateBr(bodyBB);
+                B.SetInsertPoint(bodyBB);
+                continueT.push_back(condBB);
+                breakT.push_back(afterBB);
+                if (ds->body) block(ds->body.get());
+                if (!terminated()) B.CreateBr(condBB);
+                continueT.pop_back();
+                breakT.pop_back();
+                curFn->insert(curFn->end(), condBB);
+                B.SetInsertPoint(condBB);
+                llvm::Value *cv = ds->condition ? expr(ds->condition.get()) : nullptr;
+                B.CreateCondBr(cv ? truthy(cv) : llvm::ConstantInt::getTrue(C), afterBB,
+                               bodyBB);
+                curFn->insert(curFn->end(), afterBB);
+                B.SetInsertPoint(afterBB);
+                return;
+            }
+            if (const auto *fs = dynamic_cast<const ast::ForInStatement *>(n)) {
+                const auto *range =
+                        dynamic_cast<const ast::BinaryOp *>(fs->iterable.get());
+                if (!range || range->op != "..") {
+                    err("for-in only supports integer ranges (lo..hi)");
+                    return;
+                }
+                llvm::Value *loObj = expr(range->left.get());
+                llvm::Value *hiObj = expr(range->right.get());
+                if (!loObj || !hiObj) return;
+                auto *toI64 = rt("mxs_int_to_i64", i64, { ptr });
+                llvm::Value *lo = B.CreateCall(toI64, { loObj });
+                llvm::Value *hi = B.CreateCall(toI64, { hiObj });
+                auto *ctr = allocaTy(i64, fs->var + ".i");
+                B.CreateStore(lo, ctr);
+                auto saved = locals;
+                auto *box = allocaTy(ptr, fs->var);// the loop var's binding cell
+                locals[fs->var] = box;
+                auto *condBB = bb("for.cond");
+                auto *bodyBB = llvm::BasicBlock::Create(C, "for.body");
+                auto *incrBB = llvm::BasicBlock::Create(C, "for.incr");
+                auto *afterBB = llvm::BasicBlock::Create(C, "for.end");
+                B.CreateBr(condBB);
+                B.SetInsertPoint(condBB);
+                llvm::Value *cur = B.CreateLoad(i64, ctr, fs->var + ".i");
+                B.CreateCondBr(B.CreateICmpSLT(cur, hi, "forcmp"), bodyBB, afterBB);
+                curFn->insert(curFn->end(), bodyBB);
+                B.SetInsertPoint(bodyBB);
+                // Rebind the loop variable to a fresh immutable cell holding box_int(counter).
+                auto *iv = B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }), { cur });
+                auto *cell = B.CreateCall(rt("mxs_lvalue_new", ptr, { ptr, i64 }),
+                                          { iv, llvm::ConstantInt::get(i64, 0) });
+                B.CreateStore(cell, box);
+                continueT.push_back(incrBB);
+                breakT.push_back(afterBB);
+                if (fs->body) block(fs->body.get());
+                if (!terminated()) B.CreateBr(incrBB);
+                continueT.pop_back();
+                breakT.pop_back();
+                curFn->insert(curFn->end(), incrBB);
+                B.SetInsertPoint(incrBB);
+                B.CreateStore(B.CreateAdd(B.CreateLoad(i64, ctr),
+                                          llvm::ConstantInt::get(i64, 1), "inc"),
+                              ctr);
+                B.CreateBr(condBB);
+                curFn->insert(curFn->end(), afterBB);
+                B.SetInsertPoint(afterBB);
+                locals = saved;
+                return;
+            }
+            if (dynamic_cast<const ast::BreakStatement *>(n)) {
+                if (!breakT.empty()) B.CreateBr(breakT.back());
+                else
+                    err("'break' outside a loop");
+                return;
+            }
+            if (dynamic_cast<const ast::ContinueStatement *>(n)) {
+                if (!continueT.empty()) B.CreateBr(continueT.back());
+                else
+                    err("'continue' outside a loop");
+                return;
+            }
+            if (const auto *as = dynamic_cast<const ast::AssertStatement *>(n)) {
+                llvm::Value *v = as->expr ? expr(as->expr.get()) : nullptr;
+                if (!v) return;
+                auto *failBB = bb("assert.fail");
+                auto *okBB = bb("assert.ok");
+                B.CreateCondBr(truthy(v), okBB, failBB);
+                B.SetInsertPoint(failBB);
+                B.CreateCall(rt("mxs_panic", voidTy, { ptr }),
+                             { B.CreateGlobalStringPtr("assertion failed") });
+                B.CreateUnreachable();
+                B.SetInsertPoint(okBB);
+                return;
+            }
+            err("unsupported statement");
+        }
 
-            void emitFunction(const ast::FunctionDef *fn) {
-                curFn = funcs.at(fn->name);
-                inMain = fn->name == "main";
-                B.SetInsertPoint(llvm::BasicBlock::Create(C, "entry", curFn));
-                if (fn->body) stmt(fn->body.get());
-                if (!terminated()) {
-                    if (inMain) B.CreateRet(llvm::ConstantInt::get(i64, 0));
-                    else
-                        B.CreateRetVoid();
-                }
+        void CoreGen::emitFunction(const ast::FunctionDef *fn) {
+            curFn = funcs.at(fn->name);
+            inMain = fn->name == "main";
+            locals.clear();
+            B.SetInsertPoint(llvm::BasicBlock::Create(C, "entry", curFn));
+            unsigned i = 0;
+            for (auto &arg : curFn->args()) {
+                if (i >= fn->params.size()) break;
+                bind(fn->params[i]->name, &arg, /*mutable=*/false);// params are immutable
+                ++i;
             }
-        };
+            if (fn->body) block(fn->body.get());
+            if (!terminated()) {
+                if (inMain) B.CreateRet(llvm::ConstantInt::get(i64, 0));
+                else if (curFn->getReturnType()->isVoidTy())
+                    B.CreateRetVoid();
+                else
+                    B.CreateRet(nil());
+            }
+        }
     }// namespace
 
     std::unique_ptr<llvm::Module> compile_core(const ast::TranslationUnit &tu,
@@ -705,7 +1025,10 @@ namespace mxs::backend::codegen {
             std::cerr << "core-codegen: program has no main()\n";
             return nullptr;
         }
-        CoreGen g{ module.get(), B, llvmContext, i64, voidTy, ptr, funcs };
+        CoreGen g{
+            module.get(), B,   llvmContext, i64, llvm::Type::getDoubleTy(llvmContext),
+            voidTy,       ptr, funcs
+        };
         for (const auto &s : tu.statements)
             if (const auto *fn = dynamic_cast<const ast::FunctionDef *>(s.get()))
                 if (!fn->isForeign) g.emitFunction(fn);

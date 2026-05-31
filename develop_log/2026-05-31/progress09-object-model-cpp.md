@@ -122,9 +122,24 @@ the canonical design and supersedes the flat model.
   can register `__cxa_atexit` handlers whose code lives in freed JIT memory (the standard ORC
   one-shot-runner teardown hazard); the REPL path returns through `jit::run` normally. (Proper
   fix — run the platform's deinitializers before teardown — is a later cleanup.)
-- NEXT in ④: grow `compile_core` to variables (as `MXLeftValue`, retain/release per D8), control
-  flow, the other types/operators (float/bool/str/list, comparisons, `**`, `[...]`/subscript),
-  and `match`/Error; then retire the flat object-mode runtime + native numeric slice.
+- **Real programs run on the new model.** Grew `compile_core` to a full lowering: variables are
+  `MXLeftValue` binding cells (`let` immutable / `let mut` mutable; reads via `mxs_lvalue_rvalue`,
+  assignment via `mxs_lvalue_update` which enforces immutability at runtime), params are immutable
+  cells, all scalar literals (int/float/bool/str/nil), int arithmetic + comparisons (typed
+  `mxs_int_*`, comparisons return `MXBoolean`), `&&`/`||` short-circuit, unary `-`/`!`, generic
+  calls (recursion), `if/else`, `loop`/`until`/`do-until`/`for-in`/`break`/`continue`, `assert`,
+  and `return` (main → `mxs_int_to_i64`). Conditions go through a polymorphic `is_truthy` (new
+  virtual on `MXObject`, overridden per type) via `mxs_object_truthy`. **Verified in Docker:**
+  `core_fib` → **55** (recursion + if + `<=` + arithmetic); `core_loops` → `10 / 120 / true / true`
+  (mutable vars, `for-in`, `until`, comparison, `!`); `core_arith` → 5/14/42; run-obj still 55;
+  ctest 3/3.
+- **Build fix:** the `core.bc` custom commands now depend on the core headers too — they only
+  depended on the `.cpp`, so a header-only change (e.g. adding the `is_truthy` virtual, which shifts
+  vtable layout) left stale, ABI-incompatible bitcode and crashed virtual dispatch at runtime.
+- NEXT in ④: cross-type dynamic dispatch for ops (so float/string operands work, not just int),
+  the remaining operators (`**`, subscript `[...]`), `match`/Error lowering, and retiring the flat
+  object-mode runtime + native numeric slice. (rc retain/release of temporaries per D8 still TODO —
+  temporaries currently leak, as before.)
 
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.

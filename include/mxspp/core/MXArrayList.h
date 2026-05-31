@@ -32,6 +32,7 @@ namespace mxs::builtin {
 
         // --- MXObject overrides ---
         [[nodiscard]] auto repr() const -> core::repr_t override;// "[a, b, c]"
+        [[nodiscard]] auto is_truthy() const -> bool override { return !items_.empty(); }
         [[nodiscard]] auto get_hash_code() const -> MXHashCode_t override;
 
         // --- RTTI ---

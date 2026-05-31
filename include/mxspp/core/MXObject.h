@@ -27,6 +27,9 @@ namespace mxs::core {
         virtual auto unregister_properties(const property_name_t &name) -> MXObjectOwned;
         virtual auto refer_property(const property_name_t &name) -> MXObjectConstBorrow;
         virtual auto repr() const -> repr_t;
+        // Boolean coercion used by conditions / logical ops. Default is true; the builtin
+        // types override (false for 0, nil, "", empty containers).
+        virtual auto is_truthy() const -> bool;
 
         // Reference counting (the runtime ownership model, progress09 D-temporaries). A freshly
         // constructed object starts with a count of 1 (the creator's reference). `retain` adds a

@@ -54,6 +54,7 @@ namespace mxs::core {
     }
 
     auto MXObject::repr() const -> repr_t { return this->get_rtti().name; }
+    auto MXObject::is_truthy() const -> bool { return true; }
 
     auto MXObject::retain() const -> void { ++refcount_; }
     auto MXObject::release() const -> void {
@@ -69,6 +70,11 @@ void mxs_retain(const mxs::core::MXObject *o) {
 }
 void mxs_release(const mxs::core::MXObject *o) {
     if (o) o->release();
+}
+
+// Polymorphic boolean coercion (conditions / logical ops); null is falsey.
+std::int64_t mxs_object_truthy(const mxs::core::MXObject *o) {
+    return (o && o->is_truthy()) ? 1 : 0;
 }
 
 // Polymorphic print over any MXObject via its virtual repr() (one entry point, any type).

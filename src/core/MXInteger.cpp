@@ -1,4 +1,5 @@
 #include "mxspp/core/MXInteger.h"
+#include "mxspp/core/MXBoolean.h"
 #include "mxspp/core/MXError.h"
 
 #include <cstdint>
@@ -415,6 +416,30 @@ std::int64_t mxs_int_cmp(MXObject *a, MXObject *b) {
     const MXInteger *ia = as_int(a), *ib = as_int(b);
     return (ia && ib) ? ia->cmp(*ib) : 0;
 }
+
+// Value as a host i64 (for main's return / loop bounds); 0 if it doesn't fit.
+std::int64_t mxs_int_to_i64(MXObject *o) {
+    const MXInteger *i = as_int(o);
+    bool ok = false;
+    return i ? i->to_i64(ok) : 0;
+}
+
+// Comparisons — each returns a boxed MXBoolean (the result-object the rest of the model expects).
+#define MX_INT_CMP(cname, expr)                                                          \
+    MXObject *cname(MXObject *a, MXObject *b) {                                          \
+        const MXInteger *ia = as_int(a), *ib = as_int(b);                                \
+        if (!ia || !ib)                                                                  \
+            return new mxs::core::MXError("TypeError", "expected MXInteger operands");   \
+        const int c = ia->cmp(*ib);                                                      \
+        return new mxs::builtin::MXBoolean(expr);                                        \
+    }
+MX_INT_CMP(mxs_int_lt, c < 0)
+MX_INT_CMP(mxs_int_le, c <= 0)
+MX_INT_CMP(mxs_int_gt, c > 0)
+MX_INT_CMP(mxs_int_ge, c >= 0)
+MX_INT_CMP(mxs_int_eq, c == 0)
+MX_INT_CMP(mxs_int_ne, c != 0)
+#undef MX_INT_CMP
 
 // Underlying representation name ("int8".."uint64"/"UltraInteger"). Returns a stable literal.
 const char *mxs_int_type(MXObject *o) {

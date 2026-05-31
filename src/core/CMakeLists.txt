@@ -33,6 +33,9 @@ set(CORE_BC_SOURCES
         MXObject.cpp MXPopulationManager.cpp MXError.cpp
         MXInteger.cpp MXString.cpp MXFloat.cpp MXBoolean.cpp MXNil.cpp
         MXArrayList.cpp MXLeftValue.cpp)
+# Bitcode must rebuild when any core header changes too (vtable layouts / inline virtuals live
+# in the headers); depending only on the .cpp leaves stale, ABI-incompatible bitcode.
+file(GLOB CORE_BC_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/../../include/mxspp/core/*.h)
 set(CORE_BC_PARTS "")
 foreach(src IN LISTS CORE_BC_SOURCES)
     get_filename_component(nm ${src} NAME_WE)
@@ -42,7 +45,7 @@ foreach(src IN LISTS CORE_BC_SOURCES)
                     ${CMAKE_CURRENT_SOURCE_DIR}/${src} -o ${out}
                     -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics
                     -I ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src}
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src} ${CORE_BC_HEADERS}
             COMMENT "core -> bitcode: ${src}")
     list(APPEND CORE_BC_PARTS ${out})
 endforeach()
