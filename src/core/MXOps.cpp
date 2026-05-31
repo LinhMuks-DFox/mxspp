@@ -9,6 +9,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 
 // Dynamic-dispatch operators over the real core objects (docs §8): codegen emits calls to these
@@ -162,6 +164,24 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     if (t == "ArrayList" || t == "List")
         return as<mxs::builtin::MXArrayList>(o) != nullptr;
     return o->get_rtti().name == t ? 1 : 0;// user/class types: match by RTTI name
+}
+
+// `raise` / `exit` as functions (progress06: `raise` is a special form of `exit` — exit with
+// error). Both terminate the process immediately (flush + _Exit, skipping the ORC exit-teardown
+// hazard). raise prints the error object; exit uses the given integer code.
+[[noreturn]] void mxs_raise(const MXObject *err) {
+    std::fprintf(stderr, "mxs: unhandled error: %s\n", err ? err->repr().c_str() : "nil");
+    std::fflush(nullptr);
+    std::_Exit(1);
+}
+[[noreturn]] void mxs_exit(const MXObject *code) {
+    std::int64_t n = 0;
+    if (const auto *i = as<MXInteger>(code)) {
+        bool ok = false;
+        n = i->to_i64(ok);
+    }
+    std::fflush(nullptr);
+    std::_Exit(static_cast<int>(n));
 }
 
 }// extern "C"

@@ -94,8 +94,10 @@ namespace mxs::frontend::grammar {
         : pegtl::sor<K_AS, K_ASSERT, K_BREAK, K_CASE, K_CLASS, K_CONTINUE, K_DEFER, K_DO,
                      K_DYNAMIC, K_ELSE, K_ENUM, K_EXPORT, K_FOR, K_FUNC, K_IF, K_IMPORT,
                      K_IN, K_INTERFACE, K_LET, K_LOOP, K_MATCH, K_MUT, K_OPERATOR,
-                     K_OVERRIDE, K_PRIVATE, K_PUBLIC, K_RAISE, K_RETURN, K_STATIC, K_TYPE,
+                     K_OVERRIDE, K_PRIVATE, K_PUBLIC, K_RETURN, K_STATIC, K_TYPE,
                      K_UNTIL> { };
+    // NOTE: `raise` is NOT a reserved word (progress06 error model): it is an ordinary
+    // function (a special form of `exit`). The legacy `raise <expr>` form is gone.
 
     // ===================================================================
     // General Components
@@ -150,7 +152,7 @@ namespace mxs::frontend::grammar {
         : pegtl::sor<literal, list_literal,
                      pegtl::seq<pegtl::one<'('>, ignored, expression, ignored,
                                 pegtl::one<')'>>,
-                     block_expr, match_expr, raise_expr, lambda_expr,
+                     block_expr, match_expr, lambda_expr,
                      identifier// Must be last to avoid greedily matching keywords
                      > { };
 

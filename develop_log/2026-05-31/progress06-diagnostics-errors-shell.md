@@ -63,8 +63,12 @@ Mux's confirmed design (the `case {}`/`case error{}` sketch was scrapped; his th
 - Errors flow as `MXError` objects (a fallible op like `/0` returns one); `case e: Error => …`
   catches them — "all errors handled via match". Verified in Docker (`example/examples/core_match.mxs`):
   `10/2` → `case v:int` → `5`; `10/0` → `case e:Error` → "caught division error";
-  `match(7){case 1=>… case _=>…}` → "other". (Still TODO: `raise(...)`/`exit(...)` as functions;
-  `err.msg` needs member access; exhaustiveness checking.)
+  `match(7){case 1=>… case _=>…}` → "other".
+- `raise(...)` / `exit(...)` are now **functions** (not keywords): `mxs_raise` prints the error and
+  exits(1); `mxs_exit(code)` exits with the integer code (both flush + `_Exit`, skipping the ORC
+  teardown hazard). Removed `K_RAISE` from the reserved words and `raise_expr` from the grammar, so
+  `raise` is an ordinary identifier/function. Verified (`example/examples/core_raise.mxs`):
+  `exit(2)` ends the program with code 2. (Still TODO: `err.msg` needs member access; exhaustiveness.)
 
 ## Error model — design (Mux, 2026-05-31): `match`-based, no `raise` keyword
 Supersedes the docs §6 `raise`/`match` sketch and progress05's note.

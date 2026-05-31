@@ -55,6 +55,8 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
 @@foreign(symbol_name="mxs_arraylist_len")    func len(xs: any) -> any;
 @@foreign(symbol_name="mxs_arraylist_append") func append(xs: any, v: any) -> nil;
 @@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
+@@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
+@@foreign(symbol_name="mxs_exit")             func exit(code: any) -> nil;
 )MXS";
 
     std::string read_file(const std::string &path, bool &ok) {
