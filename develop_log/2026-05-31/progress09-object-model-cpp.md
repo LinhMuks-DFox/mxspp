@@ -120,3 +120,10 @@ the canonical design and supersedes the flat model.
   Supersedes the flat tagged-union object model (progress05). No code yet — pending the bignum-backend
   decision and a confirm on the design. The uncommitted flat `ArrayList` work will be redone as a
   real `MXArrayList`.
+- 2026-05-31 [ai] Implemented **MXInteger** (commit 7adc606): complete C++ class + self-written
+  bignum (sign + base-2^64 limbs; add/sub/mul, bit long division, square-and-multiply pow) +
+  from_literal + int_type/int_size + extern "C" ABI + RTTI; div/mod-by-zero & bad-literal return
+  MXError. Unit-tested (core_test, incl. 2**256). Bignum backend = own (D5).
+- 2026-05-31 [ai] Implemented **MXString** (sequencing step ②): UTF-8 std::string value, immutable;
+  concat / length (→MXInteger) / cmp / equals / hash / repr + extern "C" ABI (mxs_str_*) + RTTI.
+  Unit-tested. Next: MXFloat / MXBoolean / MXNil, then the left-value model and codegen rewiring.

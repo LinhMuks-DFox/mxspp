@@ -5,12 +5,14 @@
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXInteger.h"
 #include "mxspp/core/MXObject.h"
+#include "mxspp/core/MXString.h"
 
 #include <memory>
 #include <string>
 
 using mxs::MXObjectOwned;
 using mxs::builtin::MXInteger;
+using mxs::builtin::MXString;
 using mxs::core::MXObject;
 
 namespace {
@@ -118,6 +120,46 @@ MX_TEST(integer_rtti_and_size) {
     CHECK(MXInteger::get_rtti().parent == &MXObject::get_rtti());
     // int_size is at least the object header (storage may be 0 for the small value 5's 1 limb)
     CHECK(as_int(i).int_size() >= sizeof(MXInteger));
+}
+
+MX_TEST(string_basics) {
+    MXString hello("hello");
+    MXString world(" world");
+    // concat
+    auto cat = hello.concat(world);
+    CHECK(dynamic_cast<const MXString *>(cat.get())->value() == "hello world");
+    CHECK(hello.value() == "hello");// operands unchanged (immutable)
+    // length -> MXInteger
+    auto len = hello.length();
+    CHECK(dynamic_cast<const MXInteger *>(len.get())->to_decimal() == "5");
+    CHECK(dynamic_cast<const MXInteger *>(MXString("").length().get())->to_decimal() ==
+          "0");
+    // lexicographic compare
+    CHECK(MXString("abc").cmp(MXString("abd")) < 0);
+    CHECK(MXString("abc").cmp(MXString("abc")) == 0);
+    CHECK(MXString("b").cmp(MXString("a")) > 0);
+    // repr is the raw bytes; from_literal builds an MXString
+    CHECK(MXString("hi").repr() == "hi");
+    CHECK(dynamic_cast<const MXString *>(MXString::from_literal("lit").get())->value() ==
+          "lit");
+    CHECK(MXString("").empty());
+    CHECK(!MXString("x").empty());
+}
+
+MX_TEST(string_equals_and_rtti) {
+    MXString a("same"), b("same"), c("diff");
+    MXObjectOwned bo = std::make_unique<MXString>("same");
+    MXObjectOwned co = std::make_unique<MXString>("diff");
+    CHECK(a.equals(bo));
+    CHECK(!a.equals(co));
+    // a string never equals a non-string
+    MXObjectOwned i = MXInteger::from_literal("5");
+    CHECK(!a.equals(i));
+    CHECK(std::string(MXString::get_rtti().name) == "MXString");
+    CHECK(MXString::get_rtti().parent == &MXObject::get_rtti());
+    // equal strings hash equal; different strings (almost surely) don't
+    CHECK(a.get_hash_code() == b.get_hash_code());
+    CHECK(a.get_hash_code() != c.get_hash_code());
 }
 
 int main() { return mxtest::run_all(); }
