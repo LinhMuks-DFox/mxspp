@@ -2,6 +2,7 @@
 add_library(core STATIC
         MXBoolean.cpp
         MXError.cpp
+        MXFloat.cpp
         MXInteger.cpp
         MXMacro.cpp
         MXNil.cpp

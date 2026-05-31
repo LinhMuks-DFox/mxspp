@@ -2,8 +2,11 @@
 // Currently: MXInteger (arbitrary-precision integer, progress09).
 #include "test_framework.h"
 
+#include "mxspp/core/MXBoolean.h"
 #include "mxspp/core/MXError.h"
+#include "mxspp/core/MXFloat.h"
 #include "mxspp/core/MXInteger.h"
+#include "mxspp/core/MXNil.h"
 #include "mxspp/core/MXObject.h"
 #include "mxspp/core/MXString.h"
 
@@ -11,7 +14,10 @@
 #include <string>
 
 using mxs::MXObjectOwned;
+using mxs::builtin::MXBoolean;
+using mxs::builtin::MXFloat;
 using mxs::builtin::MXInteger;
+using mxs::builtin::MXNil;
 using mxs::builtin::MXString;
 using mxs::core::MXObject;
 
@@ -160,6 +166,54 @@ MX_TEST(string_equals_and_rtti) {
     // equal strings hash equal; different strings (almost surely) don't
     CHECK(a.get_hash_code() == b.get_hash_code());
     CHECK(a.get_hash_code() != c.get_hash_code());
+}
+
+MX_TEST(float_basics) {
+    auto *f = dynamic_cast<const MXFloat *>(MXFloat::from_literal("3.5").get());
+    CHECK(f != nullptr);
+    CHECK(MXFloat(2.0).add(MXFloat(0.5))->repr() == "2.5");
+    CHECK(dynamic_cast<const MXFloat *>(MXFloat(2.5).sub(MXFloat(1.0)).get())->value() ==
+          1.5);
+    CHECK(dynamic_cast<const MXFloat *>(MXFloat(2.0).mul(MXFloat(2.5)).get())->value() ==
+          5.0);
+    CHECK(dynamic_cast<const MXFloat *>(MXFloat(7.0).div(MXFloat(2.0)).get())->value() ==
+          3.5);
+    CHECK(dynamic_cast<const MXFloat *>(MXFloat(3.0).neg().get())->value() == -3.0);
+    CHECK(MXFloat(1.0).cmp(MXFloat(2.0)) < 0);
+    CHECK(MXFloat(2.0).cmp(MXFloat(2.0)) == 0);
+    CHECK(MXFloat(3.0).cmp(MXFloat(2.0)) > 0);
+    // division by zero -> MXError; bad literal -> MXError
+    CHECK(dynamic_cast<const mxs::core::MXError *>(
+                  MXFloat(1.0).div(MXFloat(0.0)).get()) != nullptr);
+    CHECK(dynamic_cast<const mxs::core::MXError *>(MXFloat::from_literal("x").get()) !=
+          nullptr);
+    CHECK(std::string(MXFloat::get_rtti().name) == "MXFloat");
+    CHECK(MXFloat::get_rtti().parent == &MXObject::get_rtti());
+}
+
+MX_TEST(boolean_basics) {
+    CHECK(MXBoolean(true).repr() == "true");
+    CHECK(MXBoolean(false).repr() == "false");
+    CHECK(MXBoolean(true).value());
+    CHECK(dynamic_cast<const MXBoolean *>(MXBoolean(true).logical_not().get())->value() ==
+          false);
+    MXObjectOwned t1 = std::make_unique<MXBoolean>(true);
+    CHECK(MXBoolean(true).equals(t1));
+    MXObjectOwned f1 = std::make_unique<MXBoolean>(false);
+    CHECK(!MXBoolean(true).equals(f1));
+    CHECK(std::string(MXBoolean::get_rtti().name) == "MXBoolean");
+    CHECK(MXBoolean::get_rtti().parent == &MXObject::get_rtti());
+}
+
+MX_TEST(nil_basics) {
+    MXNil n;
+    CHECK(n.repr() == "nil");
+    MXObjectOwned other = std::make_unique<MXNil>();
+    CHECK(n.equals(other));// all nils are equal
+    MXObjectOwned anInt = MXInteger::from_literal("0");
+    CHECK(!n.equals(anInt));// nil is not equal to a (falsey) integer
+    CHECK(std::string(MXNil::get_rtti().name) == "MXNil");
+    CHECK(MXNil::get_rtti().parent == &MXObject::get_rtti());
 }
 
 int main() { return mxtest::run_all(); }

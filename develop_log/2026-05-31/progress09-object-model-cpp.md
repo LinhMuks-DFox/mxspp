@@ -127,3 +127,8 @@ the canonical design and supersedes the flat model.
 - 2026-05-31 [ai] Implemented **MXString** (sequencing step ②): UTF-8 std::string value, immutable;
   concat / length (→MXInteger) / cmp / equals / hash / repr + extern "C" ABI (mxs_str_*) + RTTI.
   Unit-tested. Next: MXFloat / MXBoolean / MXNil, then the left-value model and codegen rewiring.
+- 2026-05-31 [ai] Implemented **MXFloat / MXBoolean / MXNil** — completing the primitive scalar
+  types as real C++ core::MXObject subclasses (each: value + ops + repr/equals/hash + extern "C"
+  ABI + RTTI; MXFloat /0 → MXError). All in mxs::builtin. core_test now 12 cases, ctest 3/3.
+  Scalar object model done. NEXT (step ③): the left-value model (make_immutable_left_value /
+  rvalue_update / mutability) and codegen rewiring to emit the type ABI + link core as bitcode.
