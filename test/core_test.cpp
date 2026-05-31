@@ -18,6 +18,11 @@
 extern "C" {
 void mxs_retain(const mxs::core::MXObject *);
 void mxs_release(const mxs::core::MXObject *);
+// Dynamic-dispatch operators (MXOps.cpp).
+mxs::core::MXObject *mxs_op_add(mxs::core::MXObject *, mxs::core::MXObject *);
+mxs::core::MXObject *mxs_op_div(mxs::core::MXObject *, mxs::core::MXObject *);
+mxs::core::MXObject *mxs_op_lt(mxs::core::MXObject *, mxs::core::MXObject *);
+mxs::core::MXObject *mxs_op_eq(mxs::core::MXObject *, mxs::core::MXObject *);
 }
 
 using mxs::make_immutable_left_value;
@@ -307,6 +312,43 @@ MX_TEST(refcounting) {
     CHECK(o->use_count() == 1);
     mxs_release(nullptr);// no crash on null
     o->release();// drops the last reference -> the object is freed here
+}
+
+MX_TEST(dynamic_dispatch_ops) {
+    // The generic mxs_op_* dispatch over real types (docs §8) — the symbols codegen lowers to.
+    auto repr = [](MXObject *o) { return o->repr(); };
+    // int + int stays an exact MXInteger
+    auto *s = mxs_op_add(MXInteger::from_literal("2").release(),
+                         MXInteger::from_literal("3").release());
+    CHECK(dynamic_cast<const MXInteger *>(s) != nullptr);
+    CHECK(repr(s) == "5");
+    // int + float promotes to MXFloat
+    auto *p = mxs_op_add(MXInteger::from_literal("2").release(), new MXFloat(1.5));
+    CHECK(dynamic_cast<const MXFloat *>(p) != nullptr);
+    CHECK(repr(p) == "3.5");
+    // string + string concatenates
+    auto *c = mxs_op_add(new MXString("foo"), new MXString("bar"));
+    CHECK(dynamic_cast<const MXString *>(c) != nullptr);
+    CHECK(repr(c) == "foobar");
+    // string + number is a type error (an MXError object, not a crash)
+    auto *e = mxs_op_add(new MXString("x"), MXInteger::from_literal("1").release());
+    CHECK(dynamic_cast<const mxs::core::MXError *>(e) != nullptr);
+    // int / int -> MXInteger; float in -> MXFloat
+    CHECK(repr(mxs_op_div(MXInteger::from_literal("10").release(),
+                          MXInteger::from_literal("4").release())) == "2");
+    CHECK(repr(mxs_op_div(new MXFloat(10.0), MXInteger::from_literal("4").release())) ==
+          "2.5");
+    // cross-type numeric comparison
+    CHECK(dynamic_cast<const MXBoolean *>(
+                  mxs_op_lt(MXInteger::from_literal("2").release(), new MXFloat(2.5)))
+                  ->value());
+    // equality across int/float; and eq is total (int vs string -> false, no error)
+    CHECK(dynamic_cast<const MXBoolean *>(
+                  mxs_op_eq(MXInteger::from_literal("2").release(), new MXFloat(2.0)))
+                  ->value());
+    CHECK(!dynamic_cast<const MXBoolean *>(
+                   mxs_op_eq(MXInteger::from_literal("1").release(), new MXString("1")))
+                   ->value());
 }
 
 int main() { return mxtest::run_all(); }

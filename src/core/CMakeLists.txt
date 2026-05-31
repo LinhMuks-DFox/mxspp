@@ -10,6 +10,7 @@ add_library(core STATIC
         MXNil.cpp
         MXNumeric.cpp
         MXObject.cpp
+        MXOps.cpp
         MXPopulationManager.cpp
         MXString.cpp
         MXType.cpp
@@ -25,14 +26,14 @@ target_include_directories(core PUBLIC
 target_link_libraries(core PUBLIC ${MXS_LLVM_LIBRARIES})
 
 # --- core.bc : the core object types compiled to LLVM bitcode (progress09 D3/D6) ---
-# Linked into the JIT module alongside runtime.bc + user IR so the mxs_* type/lvalue/rc ABI
-# symbols resolve and LLVM can inline across the mxs/lib boundary. These sources are LLVM-free
-# (no project-LLVM headers), so they lower to plain bitcode; we llvm-link the parts together.
+# Linked into the JIT module alongside runtime.bc + user IR so the type/lvalue/rc ABI symbols
+# resolve and LLVM can inline across the mxs/lib boundary. These sources are LLVM-free (no
+# project-LLVM headers), so they lower to plain bitcode; we llvm-link the parts together.
 find_program(MXS_LLVM_LINK NAMES llvm-link llvm-link-20 llvm-link-19 llvm-link-18 REQUIRED)
 set(CORE_BC_SOURCES
         MXObject.cpp MXPopulationManager.cpp MXError.cpp
         MXInteger.cpp MXString.cpp MXFloat.cpp MXBoolean.cpp MXNil.cpp
-        MXArrayList.cpp MXLeftValue.cpp)
+        MXArrayList.cpp MXLeftValue.cpp MXOps.cpp)
 # Bitcode must rebuild when any core header changes too (vtable layouts / inline virtuals live
 # in the headers); depending only on the .cpp leaves stale, ABI-incompatible bitcode.
 file(GLOB CORE_BC_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/../../include/mxspp/core/*.h)

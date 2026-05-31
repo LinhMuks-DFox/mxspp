@@ -563,19 +563,20 @@ namespace mxs::backend::codegen {
     // to the integer ABI (full cross-type dynamic dispatch is a later step); strings/floats/bools/
     // nil literals and containers are constructed via their own ABIs.
     namespace {
-        // Integer arithmetic / comparison operator -> core ABI symbol (typed-int path for now).
-        const char *core_int_op(const std::string &op) {
-            if (op == "+") return "mxs_int_add";
-            if (op == "-") return "mxs_int_sub";
-            if (op == "*") return "mxs_int_mul";
-            if (op == "/") return "mxs_int_div";
-            if (op == "%") return "mxs_int_mod";
-            if (op == "<") return "mxs_int_lt";
-            if (op == "<=") return "mxs_int_le";
-            if (op == ">") return "mxs_int_gt";
-            if (op == ">=") return "mxs_int_ge";
-            if (op == "==") return "mxs_int_eq";
-            if (op == "!=") return "mxs_int_ne";
+        // Binary operator -> dynamic-dispatch core ABI symbol (docs §8): these inspect operand
+        // types at runtime (int/float/string), so mixed-type arithmetic and comparisons work.
+        const char *core_op(const std::string &op) {
+            if (op == "+") return "mxs_op_add";
+            if (op == "-") return "mxs_op_sub";
+            if (op == "*") return "mxs_op_mul";
+            if (op == "/") return "mxs_op_div";
+            if (op == "%") return "mxs_op_mod";
+            if (op == "<") return "mxs_op_lt";
+            if (op == "<=") return "mxs_op_le";
+            if (op == ">") return "mxs_op_gt";
+            if (op == ">=") return "mxs_op_ge";
+            if (op == "==") return "mxs_op_eq";
+            if (op == "!=") return "mxs_op_ne";
             return nullptr;
         }
 
@@ -721,7 +722,7 @@ namespace mxs::backend::codegen {
                         auto *cur = B.CreateCall(rt("mxs_lvalue_rvalue", ptr, { ptr }),
                                                  { cell }, "rv");
                         rhs = B.CreateCall(
-                                rt(core_int_op(op.substr(0, 1)), ptr, { ptr, ptr }),
+                                rt(core_op(op.substr(0, 1)), ptr, { ptr, ptr }),
                                 { cur, rhs });
                     }
                     // mxs_lvalue_update enforces immutability at runtime (returns an MXError on
@@ -730,7 +731,7 @@ namespace mxs::backend::codegen {
                                  { cell, rhs });
                     return rhs;
                 }
-                if (const char *sym = core_int_op(op)) {
+                if (const char *sym = core_op(op)) {
                     llvm::Value *l = expr(bo->left.get());
                     llvm::Value *r = expr(bo->right.get());
                     if (!l || !r) return nullptr;
@@ -743,8 +744,9 @@ namespace mxs::backend::codegen {
                 llvm::Value *v = expr(uo->operand.get());
                 if (!v) return nullptr;
                 if (uo->op == "-")
-                    return B.CreateCall(rt("mxs_int_neg", ptr, { ptr }), { v });
-                if (uo->op == "!") return boolFromI1(B.CreateNot(truthy(v), "not"));
+                    return B.CreateCall(rt("mxs_op_neg", ptr, { ptr }), { v });
+                if (uo->op == "!")
+                    return B.CreateCall(rt("mxs_op_not", ptr, { ptr }), { v });
                 return v;// unary '+'
             }
             if (const auto *call = dynamic_cast<const ast::FunctionCall *>(n)) {

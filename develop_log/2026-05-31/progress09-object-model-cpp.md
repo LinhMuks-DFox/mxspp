@@ -136,10 +136,16 @@ the canonical design and supersedes the flat model.
 - **Build fix:** the `core.bc` custom commands now depend on the core headers too — they only
   depended on the `.cpp`, so a header-only change (e.g. adding the `is_truthy` virtual, which shifts
   vtable layout) left stale, ABI-incompatible bitcode and crashed virtual dispatch at runtime.
-- NEXT in ④: cross-type dynamic dispatch for ops (so float/string operands work, not just int),
-  the remaining operators (`**`, subscript `[...]`), `match`/Error lowering, and retiring the flat
-  object-mode runtime + native numeric slice. (rc retain/release of temporaries per D8 still TODO —
-  temporaries currently leak, as before.)
+- **Cross-type dynamic dispatch — done (docs §8).** Added `core/MXOps.cpp`: generic `mxs_op_*`
+  (`add/sub/mul/div/mod/neg`, `lt/le/gt/ge/eq/ne`, `not`) that inspect operand runtime types — int
+  op int stays exact (bignum), any float promotes to float, string+string concatenates, bad combos
+  return an `MXError`, `eq`/`ne` are total. `compile_core` now lowers operators to these (not the
+  typed `mxs_int_*`). Verified: `core_types` → `hello world` / `3.5` / `2.5` / `2` / `true` /
+  `false` (string concat, int→float promotion, float vs int div, cross-type compare); int programs
+  (fib/loops) unchanged; core_test gains a `dynamic_dispatch_ops` case. ctest 3/3.
+- NEXT in ④: the remaining operators (`**`, subscript `[...]` + iteration over containers/strings),
+  `match`/Error lowering (the recoverable error model), retiring the flat object-mode runtime +
+  native numeric slice, and rc retain/release of temporaries per D8 (temporaries currently leak).
 
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.
