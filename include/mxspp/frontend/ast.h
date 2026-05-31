@@ -172,6 +172,8 @@ namespace mxs::frontend {
             std::vector<std::unique_ptr<Parameter>> params;
             std::optional<std::string> returnTypeName;
             std::unique_ptr<Block> body;
+            bool isForeign = false;   // @@foreign: bodyless, bound to an external symbol
+            std::string foreignSymbol;// external symbol (defaults to `name` if empty)
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 

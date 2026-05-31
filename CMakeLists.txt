@@ -79,7 +79,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 # 把需要的库名收集到变量
 llvm_map_components_to_libnames(MXS_LLVM_LIBRARIES
-    Core Support ExecutionEngine OrcJIT OrcTargetProcess)
+    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader)
 
 message(STATUS "LLVM version: ${LLVM_PACKAGE_VERSION}")
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
@@ -88,7 +88,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 # 3. 使用 LLVM 提供的辅助函数，将所有需要的组件库名存入一个变量
 llvm_map_components_to_libnames(MXS_LLVM_LIBRARIES
-    Core Support ExecutionEngine OrcJIT OrcTargetProcess
+    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader
 )
 
 # --- 寻找 PEGTL (保持不变, 但路径指向新的统一目录名) ---

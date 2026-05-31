@@ -1,4 +1,4 @@
-add_library(shell SHARED shell.cpp)
+add_library(shell STATIC shell.cpp)
 target_include_directories(shell PUBLIC ../../include)
 
 # 【修正】取消此行的注释来链接 shell 的直接依赖

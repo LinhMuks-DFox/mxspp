@@ -34,12 +34,17 @@ namespace mxs::backend::codegen {
                                         ? map_type(llvmContext, *fn->returnTypeName)
                                         : llvm::Type::getVoidTy(llvmContext);
             auto *fty = llvm::FunctionType::get(retTy, argTys, /*isVarArg=*/false);
-            auto *f = llvm::Function::Create(fty, llvm::Function::ExternalLinkage,
-                                             fn->name, module.get());
+            // @@foreign binds the function to an external symbol (its body is a declaration).
+            const std::string symbol =
+                    fn->isForeign
+                            ? (fn->foreignSymbol.empty() ? fn->name : fn->foreignSymbol)
+                            : fn->name;
+            auto *f = llvm::Function::Create(fty, llvm::Function::ExternalLinkage, symbol,
+                                             module.get());
             unsigned i = 0;
             for (auto &arg : f->args())
                 if (i < fn->params.size()) arg.setName(fn->params[i++]->name);
-            ctx.functions[fn->name] = f;
+            ctx.functions[fn->name] = f;// resolve calls by the mxs-level name
         }
 
         // Pass 2: emit bodies. (class/interface/enum/type need the object model — skipped.)

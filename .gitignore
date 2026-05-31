@@ -2,6 +2,10 @@ build/
 bin/
 .DS_Store
 others/
+# core dumps (root-anchored so src/core/ is unaffected)
+/core
+/core.*
+/vgcore.*
 lib/
 *.so
 *.exe

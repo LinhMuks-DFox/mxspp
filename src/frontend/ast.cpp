@@ -157,46 +157,8 @@ namespace mxs::frontend::ast {
         return v;// unary '+'
     }
     llvm::Value *FunctionCall::codegen(CodegenContext &ctx) const {
-        // Built-in print/println: emit a direct call to the runtime fast-dispatch C-ABI
-        // (mxs_print_*). This is the hardcoded fast path until the @@foreign/stdlib layer
-        // resolves these from std.io.
-        if ((name == "print" || name == "println") && !ctx.functions.count(name)) {
-            auto &C = ctx.llvmContext;
-            auto *i64 = llvm::Type::getInt64Ty(C);
-            auto *stdout_id = llvm::ConstantInt::get(i64, 0);// 0=stdout (1=stderr, 2=stdlog)
-            // Runtime signature: void mxs_*(i64 stream, <value>?).
-            auto getfn = [&](const char *fn, llvm::Type *valTy) -> llvm::Function * {
-                if (auto *f = ctx.module->getFunction(fn)) return f;
-                std::vector<llvm::Type *> a{ i64 };
-                if (valTy) a.push_back(valTy);
-                auto *ft = llvm::FunctionType::get(llvm::Type::getVoidTy(C), a, false);
-                return llvm::Function::Create(ft, llvm::Function::ExternalLinkage, fn,
-                                              ctx.module);
-            };
-            const bool nl = (name == "println");
-            if (args.empty())
-                return ctx.builder->CreateCall(getfn("mxs_println", nullptr), { stdout_id });
-            llvm::Value *v = args[0]->codegen(ctx);
-            if (!v) return nullptr;
-            llvm::Type *t = v->getType();
-            if (t->isDoubleTy())
-                return ctx.builder->CreateCall(
-                        getfn(nl ? "mxs_println_float" : "mxs_print_float", t),
-                        { stdout_id, v });
-            if (t->isIntegerTy(1)) {
-                v = ctx.builder->CreateZExt(v, i64, "bext");
-                return ctx.builder->CreateCall(
-                        getfn(nl ? "mxs_println_bool" : "mxs_print_bool", i64),
-                        { stdout_id, v });
-            }
-            if (t->isPointerTy())
-                return ctx.builder->CreateCall(
-                        getfn(nl ? "mxs_println_str" : "mxs_print_str", t),
-                        { stdout_id, v });
-            return ctx.builder->CreateCall(
-                    getfn(nl ? "mxs_println_int" : "mxs_print_int", i64),
-                    { stdout_id, v });
-        }
+        // Fully generic: every callee (user function OR @@foreign binding) is resolved from
+        // ctx.functions — no per-function special-casing.
         auto it = ctx.functions.find(name);
         if (it == ctx.functions.end()) {
             std::cerr << "codegen: call to unknown/unsupported function '" << name
@@ -374,6 +336,7 @@ namespace mxs::frontend::ast {
         // defer needs scope-exit scheduling — not in the numeric slice (no-op for now).
     }
     void FunctionDef::codegen(CodegenContext &ctx) const {
+        if (isForeign) return;// declaration only — its prototype is the external binding
         auto it = ctx.functions.find(name);
         if (it == ctx.functions.end()) {
             std::cerr << "codegen: missing prototype for function '" << name << "'\n";

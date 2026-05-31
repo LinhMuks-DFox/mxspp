@@ -61,7 +61,8 @@ namespace mxs::frontend::parser {
                                    g::constructor_def, g::destructor_def, g::method_def,
                                    g::operator_def, g::static_member, g::interface_def,
                                    g::interface_member, g::enum_def, g::enum_variant,
-                                   g::type_def, g::field_decl>,
+                                   g::type_def, g::field_decl, g::annotation,
+                                   g::annotation_arg>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -438,6 +439,29 @@ namespace mxs::frontend::parser {
         return nullptr;// still out of scope: class / interface / enum / match / ...
     }
 
+    // A parsed annotation: name + (key, value-as-string) args, e.g.
+    // @@foreign(symbol_name="mxs_x") -> {name:"foreign", args:[{"symbol_name","mxs_x"}]}.
+    struct AnnotInfo {
+        std::string name;
+        std::vector<std::pair<std::string, std::string>> args;
+    };
+    static AnnotInfo parse_annotation(const Node &n) {
+        AnnotInfo a;
+        for (const auto &c : n.children) {
+            if (c->is_type<g::identifier>() && a.name.empty()) {
+                a.name = content_of(*c);
+            } else if (c->is_type<g::annotation_arg>()) {
+                std::string k, v;
+                for (const auto &ac : c->children) {
+                    if (ac->is_type<g::identifier>() && k.empty()) k = content_of(*ac);
+                    else if (ac->has_content()) v = unquote(content_of(*ac));
+                }
+                a.args.push_back({ k, v });
+            }
+        }
+        return a;
+    }
+
     std::unique_ptr<ast::TranslationUnit> parse_to_ast(std::string_view source,
                                                        std::string_view source_name) {
         try {
@@ -446,8 +470,28 @@ namespace mxs::frontend::parser {
             auto root = pt::parse<g::grammar, selector>(in);
             if (!root) return nullptr;
             auto tu = mk<ast::TranslationUnit>();
-            for (const auto &c : root->children)
-                if (auto s = to_stmt(*c)) tu->statements.push_back(std::move(s));
+            std::vector<AnnotInfo> pending;
+            for (const auto &c : root->children) {
+                if (c->is_type<g::annotation>()) {
+                    pending.push_back(parse_annotation(*c));
+                    continue;
+                }
+                auto s = to_stmt(*c);
+                if (s) {
+                    // A preceding @@foreign annotation binds this function to an external
+                    // symbol — fully generic, no per-function special-casing in codegen.
+                    if (auto *fd = dynamic_cast<ast::FunctionDef *>(s.get())) {
+                        for (const auto &a : pending) {
+                            if (a.name != "foreign") continue;
+                            fd->isForeign = true;
+                            for (const auto &kv : a.args)
+                                if (kv.first == "symbol_name") fd->foreignSymbol = kv.second;
+                        }
+                    }
+                    tu->statements.push_back(std::move(s));
+                }
+                pending.clear();
+            }
             return tu;
         } catch (const pegtl::parse_error &e) {
             std::cerr << "parse error: " << e.what() << "\n";

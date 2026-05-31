@@ -4,6 +4,6 @@ add_executable(mxs main.cpp)
 target_link_libraries(mxs PRIVATE shell frontend)
 
 # Your install rules can stay here
-install(TARGETS core frontend backend jit shell LIBRARY DESTINATION lib)
+install(TARGETS core frontend backend jit shell ARCHIVE DESTINATION lib)
 install(TARGETS mxs RUNTIME DESTINATION bin)
 install(FILES ${BIN_DIR}/runtime.bc DESTINATION lib)

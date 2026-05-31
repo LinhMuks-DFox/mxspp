@@ -1,5 +1,5 @@
 # 定义库 mxs-core
-add_library(core SHARED
+add_library(core STATIC
         MXBoolean.cpp
         MXError.cpp
         MXMacro.cpp

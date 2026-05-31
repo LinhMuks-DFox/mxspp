@@ -293,9 +293,10 @@ namespace mxs::frontend::grammar {
     // ===================================================================
     // Definitions
     // ===================================================================
+    // A function body is a block, or `;` for a bodyless declaration (e.g. @@foreign).
     struct func_def
         : pegtl::seq<K_FUNC, ignored, identifier, pegtl::opt<ignored, generic_param>,
-                     ignored, func_sig, ignored, block> { };
+                     ignored, func_sig, ignored, pegtl::sor<block, pegtl::one<';'>>> { };
     struct field_def_class : let_stmt { };
     struct method_def : pegtl::seq<pegtl::opt<K_OVERRIDE, ignored>, K_FUNC, ignored,
                                    identifier, pegtl::opt<ignored, generic_param>,

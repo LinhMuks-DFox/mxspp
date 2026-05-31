@@ -1,4 +1,4 @@
-add_library(backend SHARED codegen.cpp)
+add_library(backend STATIC codegen.cpp)
 target_include_directories(backend PUBLIC ../../include)
 
 # 【新增】链接 frontend 和 LLVM
