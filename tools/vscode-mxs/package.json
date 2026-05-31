@@ -1,0 +1,35 @@
+{
+  "name": "mxs-language",
+  "displayName": "MXScript (mxs)",
+  "description": "Syntax highlighting for MXScript (.mxs) — derived from the mxspp grammar.",
+  "version": "0.0.1",
+  "publisher": "mxspp",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mxs",
+        "aliases": [
+          "MXScript",
+          "mxs"
+        ],
+        "extensions": [
+          ".mxs"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mxs",
+        "scopeName": "source.mxs",
+        "path": "./syntaxes/mxs.tmLanguage.json"
+      }
+    ]
+  }
+}

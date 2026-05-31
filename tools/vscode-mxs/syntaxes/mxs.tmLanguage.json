@@ -1,0 +1,134 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "MXScript",
+  "scopeName": "source.mxs",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#annotations" },
+    { "include": "#function-definition" },
+    { "include": "#operator-definition" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#types" },
+    { "include": "#self" },
+    { "include": "#numbers" },
+    { "include": "#function-call" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.mxs",
+          "match": "(#|//).*$"
+        },
+        {
+          "name": "comment.block.mxs",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.mxs",
+      "begin": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.mxs" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.mxs" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.mxs",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "annotations": {
+      "name": "meta.annotation.mxs",
+      "match": "@@[A-Za-z_][A-Za-z0-9_]*",
+      "captures": {
+        "0": { "name": "entity.name.function.decorator.mxs" }
+      }
+    },
+    "function-definition": {
+      "match": "\\b(func)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.function.mxs" },
+        "2": { "name": "entity.name.function.mxs" }
+      }
+    },
+    "operator-definition": {
+      "match": "\\b(operator)\\s*(\\*\\*|<<|>>|<=|>=|==|!=|\\[\\]=?|[-+*/%&|^~<>])",
+      "captures": {
+        "1": { "name": "storage.type.function.mxs" },
+        "2": { "name": "entity.name.function.operator.mxs" }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.mxs",
+          "match": "\\b(if|else|loop|until|do|for|in|break|continue|return|match|case|defer|assert|raise)\\b"
+        },
+        {
+          "name": "keyword.control.import.mxs",
+          "match": "\\b(import|export|as)\\b"
+        },
+        {
+          "name": "storage.type.mxs",
+          "match": "\\b(func|let|class|interface|enum|type|operator)\\b"
+        },
+        {
+          "name": "storage.modifier.mxs",
+          "match": "\\b(mut|static|override|public|private|dynamic)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "name": "constant.language.mxs",
+      "match": "\\b(true|false|nil)\\b"
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.mxs",
+          "match": "\\b(int|float|bool|string|decimal|void|object|Object|List|Array|Tuple|Dict|Error|Self|RTTIObject)\\b"
+        },
+        {
+          "name": "entity.name.type.mxs",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "self": {
+      "name": "variable.language.self.mxs",
+      "match": "\\bself\\b"
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.mxs",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.mxs",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "function-call": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": { "name": "entity.name.function.call.mxs" }
+      }
+    },
+    "operators": {
+      "name": "keyword.operator.mxs",
+      "match": "(\\*\\*|->|=>|\\.\\.|\\+=|-=|\\*=|/=|==|!=|<=|>=|\\|\\||&&|[-+*/%!?=<>|])"
+    }
+  }
+}
