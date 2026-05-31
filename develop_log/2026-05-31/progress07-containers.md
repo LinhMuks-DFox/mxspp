@@ -70,9 +70,15 @@ builtins (object-mode prelude). Also added the **`**` power operator** (grammar 
 `mxs_op_pow`). Verified (`example/examples/core_list.mxs`): `2 ** 10`→1024, `[10,20,30]`,
 `xs[1]`→20, `len(xs)`→3, `append` then `[10,20,30,40]`/4.
 
+## Subscript assignment + iteration (2026-05-31)
+- `xs[i] = v` (and compound `xs[i] += v`) → `mxs_arraylist_set` (compile_core assignment handles an
+  `IndexExpr` target). `for x in xs` iterates a container by a hidden index counter (0..len, element
+  = `xs[i]`); ranges `for i in lo..hi` unchanged. Verified (`example/examples/core_iter.mxs`):
+  `xs[1]=99` → `[1, 99, 3]`; summing `for x in xs` → 103; `for y in [10,20,30]` prints 10/20/30.
+
 ## Open / TODO
-- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics; subscript
-  assignment `xs[i] = v`; iteration `for x in xs`.
+- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics; string indexing/
+  iteration; Dict literal `[k: v]`; the static `Array`/`Tuple`; then `Matrix` (needs classes).
 - Static `Array` (POD vs boxed), `Tuple`, `Dict`. Then `Matrix` (after classes/methods).
 - Method-call syntax (`xs.append(v)`, `xs.length()`) once OOP dispatch lands; reconcile element rc.
 

@@ -1,0 +1,12 @@
+# Subscript assignment and for-in over a container (run-core).
+# Expected: [1, 99, 3] / 103 / 10 / 20 / 30
+func main() -> int {
+    let xs = [1, 2, 3];
+    xs[1] = 99;
+    println(xs);                      # [1, 99, 3]
+    let mut sum = 0;
+    for x in xs { sum = sum + x; }     # 1 + 99 + 3
+    println(sum);                      # 103
+    for y in [10, 20, 30] { println(y); }
+    return 0;
+}

@@ -740,6 +740,25 @@ namespace mxs::backend::codegen {
                 const std::string &op = bo->op;
                 if (op == "&&" || op == "||") return shortCircuit(bo);
                 if (op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=") {
+                    // Subscript assignment: `xs[i] = v` (and compound forms).
+                    if (const auto *ix =
+                                dynamic_cast<const ast::IndexExpr *>(bo->left.get())) {
+                        llvm::Value *tgt = expr(ix->target.get());
+                        llvm::Value *idx = expr(ix->index.get());
+                        llvm::Value *rhs = expr(bo->right.get());
+                        if (!tgt || !idx || !rhs) return nullptr;
+                        if (op != "=") {
+                            auto *cur = B.CreateCall(
+                                    rt("mxs_arraylist_get", ptr, { ptr, ptr }),
+                                    { tgt, idx });
+                            rhs = B.CreateCall(
+                                    rt(core_op(op.substr(0, 1)), ptr, { ptr, ptr }),
+                                    { cur, rhs });
+                        }
+                        B.CreateCall(rt("mxs_arraylist_set", ptr, { ptr, ptr, ptr }),
+                                     { tgt, idx, rhs });
+                        return rhs;
+                    }
                     const auto *lid =
                             dynamic_cast<const ast::Identifier *>(bo->left.get());
                     if (!lid) {
@@ -976,18 +995,27 @@ namespace mxs::backend::codegen {
                 return;
             }
             if (const auto *fs = dynamic_cast<const ast::ForInStatement *>(n)) {
+                // `for v in lo..hi` (integer range) or `for v in xs` (iterate a container by
+                // index). Both run a hidden i64 counter; the loop var is rebound each iteration.
                 const auto *range =
                         dynamic_cast<const ast::BinaryOp *>(fs->iterable.get());
-                if (!range || range->op != "..") {
-                    err("for-in only supports integer ranges (lo..hi)");
-                    return;
-                }
-                llvm::Value *loObj = expr(range->left.get());
-                llvm::Value *hiObj = expr(range->right.get());
-                if (!loObj || !hiObj) return;
+                const bool isRange = range && range->op == "..";
                 auto *toI64 = rt("mxs_int_to_i64", i64, { ptr });
-                llvm::Value *lo = B.CreateCall(toI64, { loObj });
-                llvm::Value *hi = B.CreateCall(toI64, { hiObj });
+                llvm::Value *lo = nullptr, *hi = nullptr, *listObj = nullptr;
+                if (isRange) {
+                    llvm::Value *loObj = expr(range->left.get());
+                    llvm::Value *hiObj = expr(range->right.get());
+                    if (!loObj || !hiObj) return;
+                    lo = B.CreateCall(toI64, { loObj });
+                    hi = B.CreateCall(toI64, { hiObj });
+                } else {
+                    listObj = expr(fs->iterable.get());
+                    if (!listObj) return;
+                    lo = llvm::ConstantInt::get(i64, 0);
+                    hi = B.CreateCall(
+                            toI64, { B.CreateCall(rt("mxs_arraylist_len", ptr, { ptr }),
+                                                  { listObj }) });
+                }
                 auto *ctr = allocaTy(i64, fs->var + ".i");
                 B.CreateStore(lo, ctr);
                 auto saved = locals;
@@ -1003,8 +1031,13 @@ namespace mxs::backend::codegen {
                 B.CreateCondBr(B.CreateICmpSLT(cur, hi, "forcmp"), bodyBB, afterBB);
                 curFn->insert(curFn->end(), bodyBB);
                 B.SetInsertPoint(bodyBB);
-                // Rebind the loop variable to a fresh immutable cell holding box_int(counter).
-                auto *iv = B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }), { cur });
+                // The element: the counter itself (range) or xs[counter] (container).
+                auto *ctrObj =
+                        B.CreateCall(rt("mxs_int_from_i64", ptr, { i64 }), { cur });
+                llvm::Value *iv =
+                        isRange ? ctrObj
+                                : B.CreateCall(rt("mxs_arraylist_get", ptr, { ptr, ptr }),
+                                               { listObj, ctrObj });
                 auto *cell = B.CreateCall(rt("mxs_lvalue_new", ptr, { ptr, i64 }),
                                           { iv, llvm::ConstantInt::get(i64, 0) });
                 B.CreateStore(cell, box);
