@@ -150,6 +150,60 @@ the canonical design and supersedes the flat model.
   member access (`err.msg`) / methods, `raise(...)`/`exit(...)` as functions, retiring the flat
   object-mode runtime + native numeric slice, and rc retain/release of temporaries per D8.
 
+## Session status snapshot (2026-05-31) — new object model, end to end
+
+**Committed & verified (Docker, ctest 3/3, no co-author). The `mxs run-core` pipeline runs real
+programs through real C++ core types compiled to `core.bc`, JIT-linked, LLVM-optimized across the
+boundary.** Commits this phase (newest last): 7adc606 MXInteger(bignum) · 04884db MXString ·
+a12a025 MXFloat/Bool/Nil · 3017355 MXArrayList · 83ef200 MXLeftValue · 6d08d51 refcount ·
+9d80fd2 core.bc · 0d6c984 run-core wired · 32500bc compile_core full (vars/control-flow/cmp) ·
+0864742 cross-type mxs_op_* · dd5fc17 match error model · c79c7b1 `**`/list-literal/subscript/
+len/append · 03c2314 subscript-assign + for-in over containers · 4f6d6b3 raise()/exit() (+ dropped
+`raise` keyword) · 2e9bbc3 member access `err.msg` · cfd4fa0 polymorphic index/len (list+string).
+
+Language now working in run-core: real types (MXInteger bignum, MXString, MXFloat, MXBoolean, MXNil,
+MXArrayList, MXError) + MXLeftValue bindings (`let`/`let mut`, runtime-enforced immutability);
+functions, recursion, full control flow; operators `+ - * / % ** < <= > >= == != && || !` via
+dynamic dispatch (`mxs_op_*`, int/float/string); `match` with type-binding patterns
+(`case x: T =>`)/literal/`_`, `raise()`/`exit()`, member access `err.msg`/`err.kind`; containers:
+list literals `[…]`, subscript read/write `xs[i]`/`xs[i]=v`, `for x in xs`, `len`/`append`, and
+string indexing/iteration (subscript/len/for-in are polymorphic over list+string). Demos:
+`example/examples/core_{fib,loops,types,list,iter,match,errmsg,raise,string,arith}.mxs`.
+
+**Verified ABI surface in `core.bc`:** `mxs_int_*` (from_i64/from_literal/to_i64/add/sub/mul/div/
+mod/pow/neg/cmp/type/size), `mxs_str_*`, `mxs_float_*`, `mxs_bool_*`, `mxs_nil_new`,
+`mxs_arraylist_*`, `mxs_lvalue_*`, `mxs_retain`/`mxs_release`, `mxs_object_truthy`,
+`mxs_print_object`/`mxs_println_object`, `mxs_op_*` (incl. pow), `mxs_is_type`, `mxs_get_attr`,
+`mxs_len`, `mxs_index_get`, `mxs_raise`/`mxs_exit`.
+
+**IN PROGRESS — OOP "data class" slice (UNCOMMITTED):** `include/mxspp/core/MXInstance.h` written
+(an `MXInstance : core::MXObject` with class name + insertion-ordered fields). NOT YET DONE:
+`src/core/MXInstance.cpp` (impl + `mxs_instance_new`/`mxs_set_attr`; extend `mxs_get_attr` for
+instances), add to `src/core/CMakeLists.txt` (lib + `CORE_BC_SOURCES`), and `compile_core` to:
+process `ClassDef` — declare the constructor as `funcs[ClassName]` (N ptr args → ptr) so `C(args)`
+resolves as a normal call; emit the ctor body (bind `self` = `mxs_instance_new(ClassName)`, bind
+ctor params, run body, return self); handle **member-assignment** `self.field = v` / `obj.field = v`
+(a `MemberExpr` assignment target → `mxs_set_attr`). Target demo: `class Point { Point(x:int,y:int){
+self.x=x; self.y=y; } let x:int; let y:int; }` then `Point(3,4).x` → 3. **Methods (`obj.method(args)`)
+are NOT in this slice** — they need the method-dispatch design (below).
+
+**OPEN DECISION (Mux) — OOP method dispatch:** how `obj.method(args)` resolves on the runtime
+type — vtable (instance header → per-class method table; needs instance layout + inheritance table
+merge) vs. name-based registry (`(class,method)→fn`, uniform `fn(self, argsList)` signature; easy
+dynamic/inheritance, one lookup per call) vs. inline cache. Also: inheritance (v1?), `operator`
+overload (matrix_class.mxs uses `operator+`), `static` members. Data classes (above) need none of
+this and can land first.
+
+## Remaining for "complete stdlib + runtime"
+- OOP: finish the data-class slice; then methods (after dispatch decision), inheritance, operators,
+  static members. `Matrix` (matrix_class.mxs) lands here.
+- More containers: `Dict` (`[k:v]` literal — note grammar ambiguity vs list `[a,b]`, distinguish by
+  the `:`), static `Array` (`[N]T`, POD vs boxed §3.3), `Tuple` (`(a,b,c)`).
+- Cleanup: retire the flat run-obj/native legacy paths (migrate shell to compile_core + core.bc;
+  remove compile()/compile_obj()/the ast.cpp native codegen/the flat runtime.cpp object model);
+  wire reference counting of temporaries through codegen (D8 mechanism is in place but unused —
+  temporaries currently leak). LinearAlgebra (progress08) after Matrix.
+
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.
 2. Implement the core types completely (start with `MXInteger` + `MXString`, then `MXFloat`/
