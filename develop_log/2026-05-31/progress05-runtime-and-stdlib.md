@@ -59,9 +59,15 @@ library has two layers (per docs/type_system.md §8, docs/ffi.md): an **mxs-side
   `mxs_op_add/sub/mul` (int+int→int, float promotion), polymorphic `mxs_obj_println`, and
   tag/unbox/truthy accessors — all `extern "C"` in runtime.cpp. Unit-tested (test/runtime_test.cpp,
   3 cases / 17 checks, pure C++). This is the §8 *dynamic-dispatch* path at the runtime level.
-- NEXT: object-mode codegen (emit `mxs_box_*` + `mxs_op_*` instead of native i64 when values are
-  objects), the §8 *fast-dispatch* typed ops (`mxs_integer_add`), strings (`MXString`), and
-  reconciling the tagged object with core's `MXObject` class hierarchy + RTTI.
+- **Object-mode codegen — landed (narrow slice).** `backend::compile_obj` lowers a program in
+  object mode: literals box (`mxs_box_*`), `+`/`-`/`*` go through dynamic dispatch (`mxs_op_*`),
+  `println` is polymorphic (`mxs_obj_println`). Driver: `mxs run-obj <file>`. Verified in Docker:
+  `println(2 + 3 * 4)` → 14; `println(1.5 + 2)` → **3.5** (the same `+` promotes int→float at
+  runtime — §8 dynamic dispatch in a compiled + JIT'd program). Slice = main + literals + +/-/* +
+  println.
+- NEXT: extend object-mode to variables / functions / control flow / comparisons; strings
+  (`MXString`); §8 *fast-dispatch* typed ops (`mxs_integer_add`); reconcile the tagged object with
+  core's `MXObject` class hierarchy + RTTI; then containers + the recoverable Error model.
 
 ## Open / TODO (the rest of "complete stdlib + runtime")
 - **ORC JIT**: DONE — `mxs run <file>` executes (loads runtime.bc, JITs main). (commit 9958b6a)

@@ -71,6 +71,29 @@ int main(int argc, char **argv) {
     if (args.empty() || (args.size() == 1 && args[0] == "shell"))
         return mxs::shell::repl(kPrelude, runtime_bc_path());
 
+    // Object-mode: values are boxed MXObject*; arithmetic + println go through dynamic
+    // dispatch. No prelude (println is intrinsic in object mode).
+    if (args.size() == 2 && args[0] == "run-obj") {
+        bool ok = false;
+        const std::string source = read_file(args[1], ok);
+        if (!ok) {
+            std::cerr << "error: cannot open " << args[1] << "\n";
+            return 1;
+        }
+        auto tu = parser::parse_to_ast(source, args[1]);
+        if (!tu) {
+            std::cerr << "error: failed to parse " << args[1] << "\n";
+            return 1;
+        }
+        auto context = std::make_unique<llvm::LLVMContext>();
+        auto module = mxs::backend::codegen::compile_obj(*tu, *context, args[1]);
+        if (!module) {
+            std::cerr << "error: object-mode codegen failed for " << args[1] << "\n";
+            return 1;
+        }
+        return mxs::jit::run(std::move(module), std::move(context), runtime_bc_path());
+    }
+
     if (args.size() == 2 &&
         (args[0] == "--dump-ast" || args[0] == "--emit-ir" || args[0] == "run")) {
         bool ok = false;

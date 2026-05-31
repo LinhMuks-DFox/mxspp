@@ -39,4 +39,12 @@ namespace mxs::backend::codegen {
                                           llvm::LLVMContext &llvmContext,
                                           const std::string &moduleName = "mxs");
 
+    // Object-mode lowering ("everything is an object"): values are boxed MXObject*,
+    // arithmetic goes through dynamic dispatch (mxs_op_*), and println is polymorphic
+    // (mxs_obj_println). First slice: main + literals + +/-/* + println, to prove the
+    // box -> dynamic-dispatch -> polymorphic-print path end-to-end.
+    std::unique_ptr<llvm::Module> compile_obj(const frontend::ast::TranslationUnit &tu,
+                                              llvm::LLVMContext &llvmContext,
+                                              const std::string &moduleName = "mxs_obj");
+
 }// namespace mxs::backend::codegen
