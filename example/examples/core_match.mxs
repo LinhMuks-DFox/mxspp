@@ -1,0 +1,21 @@
+# The match-based error model on the real object model (run-core, progress06/09).
+# `10 / 0` produces an Error object; match's type-binding patterns route it.
+# Expected output:
+#   5
+#   caught division error
+#   other
+func main() -> int {
+    let ok = match (10 / 2) {
+        case v: int => { println(v); v; }
+        case e: Error => { println("error"); 0; }
+    };
+    let bad = match (10 / 0) {
+        case v: int => { println(v); v; }
+        case e: Error => { println("caught division error"); 0; }
+    };
+    println(match (7) {
+        case 1 => "one"
+        case _ => "other"
+    });
+    return 0;
+}

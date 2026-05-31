@@ -76,8 +76,8 @@ namespace {
             if (op == "/" || op == "%") {
                 // sdiv/srem by zero is undefined — guard it and panic at runtime.
                 auto *fn = ctx.currentFunction;
-                auto *isZero = b.CreateICmpEQ(
-                        r, llvm::ConstantInt::get(r->getType(), 0), "iszero");
+                auto *isZero = b.CreateICmpEQ(r, llvm::ConstantInt::get(r->getType(), 0),
+                                              "iszero");
                 auto *panicBB = llvm::BasicBlock::Create(ctx.llvmContext, "divzero", fn);
                 auto *contBB = llvm::BasicBlock::Create(ctx.llvmContext, "divok", fn);
                 b.CreateCondBr(isZero, panicBB, contBB);
@@ -87,8 +87,8 @@ namespace {
                     auto *pty = llvm::FunctionType::get(
                             llvm::Type::getVoidTy(ctx.llvmContext),
                             { llvm::PointerType::get(ctx.llvmContext, 0) }, false);
-                    panicFn = llvm::Function::Create(
-                            pty, llvm::Function::ExternalLinkage, "mxs_panic", ctx.module);
+                    panicFn = llvm::Function::Create(pty, llvm::Function::ExternalLinkage,
+                                                     "mxs_panic", ctx.module);
                 }
                 b.CreateCall(panicFn, { b.CreateGlobalStringPtr("division by zero") });
                 b.CreateUnreachable();
@@ -122,7 +122,8 @@ namespace mxs::frontend::ast {
         : core::MXObject(is_static), MXASTNode(is_static), value(value) { }
 
     llvm::Value *IntegerLiteral::codegen(CodegenContext &ctx) const {
-        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx.llvmContext), value, true);
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx.llvmContext), value,
+                                      true);
     }
     llvm::Value *FloatLiteral::codegen(CodegenContext &ctx) const {
         return llvm::ConstantFP::get(llvm::Type::getDoubleTy(ctx.llvmContext), value);
@@ -160,8 +161,8 @@ namespace mxs::frontend::ast {
             }
             llvm::Value *rhs = right->codegen(ctx);
             if (op != "=") {
-                llvm::Value *cur =
-                        ctx.builder->CreateLoad(it->second->getAllocatedType(), it->second);
+                llvm::Value *cur = ctx.builder->CreateLoad(it->second->getAllocatedType(),
+                                                           it->second);
                 rhs = emit_binop(ctx, op.substr(0, 1), cur, rhs);
             }
             if (rhs) ctx.builder->CreateStore(rhs, it->second);
@@ -172,8 +173,9 @@ namespace mxs::frontend::ast {
     llvm::Value *UnaryOp::codegen(CodegenContext &ctx) const {
         llvm::Value *v = operand->codegen(ctx);
         if (!v) return nullptr;
-        if (op == "-") return is_float(v) ? ctx.builder->CreateFNeg(v, "neg")
-                                          : ctx.builder->CreateNeg(v, "neg");
+        if (op == "-")
+            return is_float(v) ? ctx.builder->CreateFNeg(v, "neg")
+                               : ctx.builder->CreateNeg(v, "neg");
         if (op == "!") return ctx.builder->CreateNot(to_cond(ctx, v), "not");
         return v;// unary '+'
     }
@@ -189,7 +191,13 @@ namespace mxs::frontend::ast {
         llvm::Function *fn = it->second;
         std::vector<llvm::Value *> argv;
         for (const auto &a : args) argv.push_back(a->codegen(ctx));
-        return ctx.builder->CreateCall(fn, argv, fn->getReturnType()->isVoidTy() ? "" : "call");
+        return ctx.builder->CreateCall(fn, argv,
+                                       fn->getReturnType()->isVoidTy() ? "" : "call");
+    }
+    llvm::Value *MatchExpr::codegen(CodegenContext &) const {
+        // match needs the object model + RTTI (it dispatches on runtime type); object-mode only.
+        std::cerr << "codegen: match requires object mode (mxs run-core)\n";
+        return nullptr;
     }
 
     // ===================== Statements =====================
@@ -204,8 +212,8 @@ namespace mxs::frontend::ast {
     void LetStatement::codegen(CodegenContext &ctx) const {
         llvm::Value *init = value ? value->codegen(ctx) : nullptr;
         llvm::Type *ty = typeName ? cg::map_type(ctx.llvmContext, *typeName)
-                         : init    ? init->getType()
-                                   : llvm::Type::getInt64Ty(ctx.llvmContext);
+                         : init   ? init->getType()
+                                  : llvm::Type::getInt64Ty(ctx.llvmContext);
         for (const auto &nm : names) {
             auto *a = entry_alloca(ctx, ctx.currentFunction, nm, ty);
             if (init) ctx.builder->CreateStore(init, a);
@@ -218,7 +226,8 @@ namespace mxs::frontend::ast {
     void ReturnStatement::codegen(CodegenContext &ctx) const {
         if (value) {
             if (llvm::Value *v = value->codegen(ctx)) ctx.builder->CreateRet(v);
-            else ctx.builder->CreateRetVoid();
+            else
+                ctx.builder->CreateRetVoid();
         } else {
             ctx.builder->CreateRetVoid();
         }
@@ -304,7 +313,8 @@ namespace mxs::frontend::ast {
         // Only `for v in lo..hi { }` is supported in the numeric slice.
         const auto *range = dynamic_cast<const BinaryOp *>(iterable.get());
         if (!range || range->op != "..") {
-            std::cerr << "codegen: for-in only supports integer ranges (lo..hi) for now\n";
+            std::cerr
+                    << "codegen: for-in only supports integer ranges (lo..hi) for now\n";
             return;
         }
         llvm::Function *fn = ctx.currentFunction;
@@ -334,8 +344,8 @@ namespace mxs::frontend::ast {
         ctx.breakTargets.pop_back();
         fn->insert(fn->end(), incrBB);
         ctx.builder->SetInsertPoint(incrBB);
-        llvm::Value *next = ctx.builder->CreateAdd(
-                ctx.builder->CreateLoad(i64, iv), llvm::ConstantInt::get(i64, 1), "inc");
+        llvm::Value *next = ctx.builder->CreateAdd(ctx.builder->CreateLoad(i64, iv),
+                                                   llvm::ConstantInt::get(i64, 1), "inc");
         ctx.builder->CreateStore(next, iv);
         ctx.builder->CreateBr(condBB);
         fn->insert(fn->end(), afterBB);
@@ -343,12 +353,14 @@ namespace mxs::frontend::ast {
     }
     void BreakStatement::codegen(CodegenContext &ctx) const {
         if (!ctx.breakTargets.empty()) ctx.builder->CreateBr(ctx.breakTargets.back());
-        else std::cerr << "codegen: 'break' outside a loop\n";
+        else
+            std::cerr << "codegen: 'break' outside a loop\n";
     }
     void ContinueStatement::codegen(CodegenContext &ctx) const {
         if (!ctx.continueTargets.empty())
             ctx.builder->CreateBr(ctx.continueTargets.back());
-        else std::cerr << "codegen: 'continue' outside a loop\n";
+        else
+            std::cerr << "codegen: 'continue' outside a loop\n";
     }
     void AssertStatement::codegen(CodegenContext &ctx) const {
         if (expr) expr->codegen(ctx);// evaluated for side effects; no runtime trap yet
@@ -379,7 +391,8 @@ namespace mxs::frontend::ast {
         if (body) body->codegen(ctx);
         if (!terminated(ctx)) {
             if (fn->getReturnType()->isVoidTy()) ctx.builder->CreateRetVoid();
-            else ctx.builder->CreateRet(llvm::Constant::getNullValue(fn->getReturnType()));
+            else
+                ctx.builder->CreateRet(llvm::Constant::getNullValue(fn->getReturnType()));
         }
         ctx.currentFunction = nullptr;
     }

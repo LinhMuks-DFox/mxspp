@@ -48,6 +48,24 @@ backtracking/regression risk):
   `1:22`); `func f( -> int` reports `1:9: expected ')'`; an unterminated block reports
   `expected '}'`; multi-line sources report the correct line:col.
 
+## Error model — IMPLEMENTED on the new object model (2026-05-31)
+`match` with **type-binding patterns** (`case x: Type => …`) is the error-handling construct, per
+Mux's confirmed design (the `case {}`/`case error{}` sketch was scrapped; his thought-through
+`example/` form `case res: Matrix => {…}` / `case err: Error => {…}` is what landed — option 1).
+- Grammar: added the type-binding pattern `name: Type` and a named wildcard `_` (the G3 gap).
+- AST: `MatchExpr` (subject + cases: type-binding / wildcard / plain-binding / literal pattern,
+  body = expression or block). Parser builds it; `block_expr` arm bodies become a Block whose last
+  expression is the arm's value.
+- Codegen (`compile_core`): evaluates the subject once, tries cases in order; type-binding tests
+  the runtime type (`mxs_is_type`), literal tests equality (`mxs_op_eq`), wildcard/plain always
+  match; binds the name; the matching arm's body value is the match's value (nil if none). It is an
+  expression (`let x = match (…) { … }`).
+- Errors flow as `MXError` objects (a fallible op like `/0` returns one); `case e: Error => …`
+  catches them — "all errors handled via match". Verified in Docker (`example/examples/core_match.mxs`):
+  `10/2` → `case v:int` → `5`; `10/0` → `case e:Error` → "caught division error";
+  `match(7){case 1=>… case _=>…}` → "other". (Still TODO: `raise(...)`/`exit(...)` as functions;
+  `err.msg` needs member access; exhaustiveness checking.)
+
 ## Error model — design (Mux, 2026-05-31): `match`-based, no `raise` keyword
 Supersedes the docs §6 `raise`/`match` sketch and progress05's note.
 

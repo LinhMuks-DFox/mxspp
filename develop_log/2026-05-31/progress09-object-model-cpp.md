@@ -143,9 +143,12 @@ the canonical design and supersedes the flat model.
   typed `mxs_int_*`). Verified: `core_types` → `hello world` / `3.5` / `2.5` / `2` / `true` /
   `false` (string concat, int→float promotion, float vs int div, cross-type compare); int programs
   (fib/loops) unchanged; core_test gains a `dynamic_dispatch_ops` case. ctest 3/3.
+- **`match`/Error — done** (see [progress06](./progress06-diagnostics-errors-shell.md)): type-binding
+  patterns `case x: Type => …` route values vs. `MXError`s; `mxs_is_type` does the runtime check;
+  it's an expression with block arms. Verified: division-by-zero `MXError` caught via `case e: Error`.
 - NEXT in ④: the remaining operators (`**`, subscript `[...]` + iteration over containers/strings),
-  `match`/Error lowering (the recoverable error model), retiring the flat object-mode runtime +
-  native numeric slice, and rc retain/release of temporaries per D8 (temporaries currently leak).
+  member access (`err.msg`) / methods, `raise(...)`/`exit(...)` as functions, retiring the flat
+  object-mode runtime + native numeric slice, and rc retain/release of temporaries per D8.
 
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.

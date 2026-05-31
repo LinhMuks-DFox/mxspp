@@ -1,3 +1,4 @@
+#include "mxspp/core/MXArrayList.h"
 #include "mxspp/core/MXBoolean.h"
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
@@ -7,6 +8,7 @@
 #include "mxspp/core/MXString.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 // Dynamic-dispatch operators over the real core objects (docs §8): codegen emits calls to these
@@ -136,6 +138,24 @@ MXObject *mxs_op_eq(MXObject *a, MXObject *b) {
 }
 MXObject *mxs_op_ne(MXObject *a, MXObject *b) {
     return new MXBoolean(!structurally_equal(a, b));
+}
+
+// Runtime type test for match's type-binding patterns (`case x: Type => …`): is `o` of the
+// mxs type named `type`? Maps the mxs type name to the runtime class. `any`/`Object` match
+// anything; unknown names fall back to comparing the object's RTTI name.
+std::int64_t mxs_is_type(const MXObject *o, const char *type) {
+    if (!o || !type) return 0;
+    const std::string t = type;
+    if (t == "any" || t == "Object" || t == "object") return 1;
+    if (t == "Error") return as<MXError>(o) != nullptr;
+    if (t == "int" || t == "Int" || t == "Integer") return as<MXInteger>(o) != nullptr;
+    if (t == "float" || t == "Float") return as<MXFloat>(o) != nullptr;
+    if (t == "String" || t == "string" || t == "Str") return as<MXString>(o) != nullptr;
+    if (t == "bool" || t == "Bool" || t == "Boolean") return as<MXBoolean>(o) != nullptr;
+    if (t == "nil" || t == "Nil") return as<mxs::builtin::MXNil>(o) != nullptr;
+    if (t == "ArrayList" || t == "List")
+        return as<mxs::builtin::MXArrayList>(o) != nullptr;
+    return o->get_rtti().name == t ? 1 : 0;// user/class types: match by RTTI name
 }
 
 }// extern "C"

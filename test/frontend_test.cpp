@@ -51,55 +51,60 @@ MX_TEST(parse_accept_matrix) {
         bool ok;
     };
     const C cases[] = {
-            // lexical
-            { "# c\nfunc f()->nil{}", true },
-            { "// c\nfunc f()->nil{}", true },
-            { "/* c */\nfunc f()->nil{}", true },
-            { "!##! c !##!\nfunc f()->nil{}", false },// G7
-            // expressions / literals
-            { "func f()->nil{ let a=1; let b=1.5; let c=\"x\"; let d=true; let e=nil; }", true },
-            { "func f()->int{ return 1+2*3-4/2; }", true },
-            { "func f()->bool{ return 1<2 && 3>=2 || false; }", true },
-            { "func f()->nil{ let x=a.b.c; let y=a[0]; g(1,2); }", true },
-            { "func f()->nil{ let x=g()?; let z=g<int>(1); }", true },
-            { "func f()->nil{ let s=(x:int)->int=>x; }", true },
-            { "func f()->nil{ let a=[1,2,3]; }", false },        // G1 list literal
-            { "func f()->nil{ let a=(1,2); }", false },          // G1 tuple literal
-            // types
-            { "func f()->nil{ let x: List<int>; }", true },
-            { "func f()-> int | string { return 1; }", true },
-            { "func f()->nil{ let x: [3]int; }", false },        // G2 array type
-            { "func f()->(int,int){ }", false },                 // G2 tuple type
-            // statements
-            { "func f()->nil{ if a {} else if b {} else {} }", true },
-            { "func f()->nil{ for i in 0..5 {} }", true },
-            { "func f()->nil{ loop { break; continue; } }", true },
-            { "func f()->nil{ until(true){} do {} until(true); }", true },
-            { "func f()->nil{ assert true; defer {} }", true },
-            // functions
-            { "func f<T>(a:T)->T{ return a; }", true },
-            { "func f(a:int=1, b,c:int)->nil{}", true },
-            { "func f(a:int, ...)->nil{}", false },              // G4 variadic
-            // OOP
-            { "class C { public: let x:int; C(x:int){self.x=x;} ~C(){} func m()->nil{} static func s()->nil{} private: let y:int; }", true },
-            { "class D : C { D():C(0){} override func m()->nil{} }", true },
-            { "class C { operator+(o:C)->C{ return o; } }", true },
-            { "class Box<T>{ public: let v:T; }", true },
-            { "type P { x:int; y:int; }", true },
-            { "enum E { A, B(x:int), C(w,h:int) }", true },
-            // match
-            { "func f()->int{ return match(n){ case 1=>1 case _=>0 }; }", true },
-            { "func f()->int{ return match(n){ case Some(y)=>1 case _=>0 }; }", true },
-            { "func f()->int{ return match(n){ case x:int=>x }; }", false },// G3 type-binding pattern
-            // annotations / ffi / top-level
-            { "@@POD class C { public: let x:int; }", true },
-            { "@@opt(level=3) func f()->nil{}", true },
-            { "@@template(T) func f()->nil{}", false },          // G5 positional annot arg
-            { "@@foreign(lib=\"x\") func f()->int{ return 0; }", true },
-            { "@@foreign(lib=\"x\") func f()->int;", true },// bodyless @@foreign now parses (G6 done)
-            { "import std.io as io;", true },
-            { "static let x = 1;", true },
-            { "export func f()->nil{}", true },
+        // lexical
+        { "# c\nfunc f()->nil{}", true },
+        { "// c\nfunc f()->nil{}", true },
+        { "/* c */\nfunc f()->nil{}", true },
+        { "!##! c !##!\nfunc f()->nil{}", false },// G7
+        // expressions / literals
+        { "func f()->nil{ let a=1; let b=1.5; let c=\"x\"; let d=true; let e=nil; }",
+          true },
+        { "func f()->int{ return 1+2*3-4/2; }", true },
+        { "func f()->bool{ return 1<2 && 3>=2 || false; }", true },
+        { "func f()->nil{ let x=a.b.c; let y=a[0]; g(1,2); }", true },
+        { "func f()->nil{ let x=g()?; let z=g<int>(1); }", true },
+        { "func f()->nil{ let s=(x:int)->int=>x; }", true },
+        { "func f()->nil{ let a=[1,2,3]; }", false },// G1 list literal
+        { "func f()->nil{ let a=(1,2); }", false },// G1 tuple literal
+        // types
+        { "func f()->nil{ let x: List<int>; }", true },
+        { "func f()-> int | string { return 1; }", true },
+        { "func f()->nil{ let x: [3]int; }", false },// G2 array type
+        { "func f()->(int,int){ }", false },// G2 tuple type
+        // statements
+        { "func f()->nil{ if a {} else if b {} else {} }", true },
+        { "func f()->nil{ for i in 0..5 {} }", true },
+        { "func f()->nil{ loop { break; continue; } }", true },
+        { "func f()->nil{ until(true){} do {} until(true); }", true },
+        { "func f()->nil{ assert true; defer {} }", true },
+        // functions
+        { "func f<T>(a:T)->T{ return a; }", true },
+        { "func f(a:int=1, b,c:int)->nil{}", true },
+        { "func f(a:int, ...)->nil{}", false },// G4 variadic
+        // OOP
+        { "class C { public: let x:int; C(x:int){self.x=x;} ~C(){} func m()->nil{} "
+          "static func s()->nil{} private: let y:int; }",
+          true },
+        { "class D : C { D():C(0){} override func m()->nil{} }", true },
+        { "class C { operator+(o:C)->C{ return o; } }", true },
+        { "class Box<T>{ public: let v:T; }", true },
+        { "type P { x:int; y:int; }", true },
+        { "enum E { A, B(x:int), C(w,h:int) }", true },
+        // match
+        { "func f()->int{ return match(n){ case 1=>1 case _=>0 }; }", true },
+        { "func f()->int{ return match(n){ case Some(y)=>1 case _=>0 }; }", true },
+        { "func f()->int{ return match(n){ case x:int=>x }; }",
+          true },// G3 type-binding pattern (now supported)
+        // annotations / ffi / top-level
+        { "@@POD class C { public: let x:int; }", true },
+        { "@@opt(level=3) func f()->nil{}", true },
+        { "@@template(T) func f()->nil{}", false },// G5 positional annot arg
+        { "@@foreign(lib=\"x\") func f()->int{ return 0; }", true },
+        { "@@foreign(lib=\"x\") func f()->int;",
+          true },// bodyless @@foreign now parses (G6 done)
+        { "import std.io as io;", true },
+        { "static let x = 1;", true },
+        { "export func f()->nil{}", true },
     };
     for (const auto &c : cases)
         CHECK_MSG(parses(c.code) == c.ok, std::string("parse: ") + c.code);
@@ -107,14 +112,19 @@ MX_TEST(parse_accept_matrix) {
 
 // ====================== grammar/parser bug regressions =====================
 MX_TEST(grammar_bug_regressions) {
-    CHECK_MSG(parses("func f()->int{ let x={ 1; 2 }; return x; }"), "B1 block_expr whitespace");
-    CHECK_MSG(parses("interface I { func a()->nil; func b()->nil {} ; }"), "B2 interface space-semi");
-    CHECK_MSG(parses("func f(cb: func(int)->int)->nil{}"), "B3 func_type as a parameter type");
-    CHECK_MSG(!parses("func f()->nil{ let (a,b)=g(); }"), "B4 let-destructure no longer misparses");
+    CHECK_MSG(parses("func f()->int{ let x={ 1; 2 }; return x; }"),
+              "B1 block_expr whitespace");
+    CHECK_MSG(parses("interface I { func a()->nil; func b()->nil {} ; }"),
+              "B2 interface space-semi");
+    CHECK_MSG(parses("func f(cb: func(int)->int)->nil{}"),
+              "B3 func_type as a parameter type");
+    CHECK_MSG(!parses("func f()->nil{ let (a,b)=g(); }"),
+              "B4 let-destructure no longer misparses");
     CHECK_MSG(parses("func f()->nil{ let format=1; let assertion=2; let internal=3; }"),
               "keyword-prefixed identifiers still parse");
     // previously-fixed (progress01) grammar bugs:
-    CHECK_MSG(parses("func f()->nil{ print(\"Hello, World!\"); }"), "string literal with normal chars");
+    CHECK_MSG(parses("func f()->nil{ print(\"Hello, World!\"); }"),
+              "string literal with normal chars");
     CHECK_MSG(parses("func f()->int{ return a+b; }"), "binary operators parse");
 }
 
@@ -149,7 +159,8 @@ MX_TEST(ast_precedence_and_assoc) {
 }
 
 MX_TEST(ast_literals) {
-    const auto d = dump("func f()->nil{ let a=1; let b=1.5; let c=true; let e=nil; let s=\"x\"; }");
+    const auto d = dump(
+            "func f()->nil{ let a=1; let b=1.5; let c=true; let e=nil; let s=\"x\"; }");
     CHECK(has(d, "Int 1"));
     CHECK(has(d, "Float 1.5"));
     CHECK(has(d, "Bool true"));
@@ -174,7 +185,8 @@ MX_TEST(ast_translation_unit_multiple_functions) {
 MX_TEST(ast_skips_out_of_scope_statements) {
     // if/for/loop aren't transformed yet (task03) -> dropped; must not crash, and the
     // supported statement around them must still land.
-    const auto d = dump("func f()->nil{ if a { g(); } for i in 0..3 { h(); } loop { break; } let x = 1; }");
+    const auto d = dump("func f()->nil{ if a { g(); } for i in 0..3 { h(); } loop { "
+                        "break; } let x = 1; }");
     CHECK(has(d, "FunctionDef f"));
     CHECK(has(d, "Let x"));
 }
@@ -198,7 +210,8 @@ MX_TEST(ast_lambda_parses_pending_transform) {
 }
 
 MX_TEST(ast_control_flow_if_else) {
-    const auto d = dump("func f()->nil{ if a { g(); } else if b { h(); } else { k(); } }");
+    const auto d =
+            dump("func f()->nil{ if a { g(); } else if b { h(); } else { k(); } }");
     CHECK(has(d, "If"));
     CHECK(has(d, "Else"));
     CHECK_MSG(count(d, "If") >= 2, "else-if nests another If");
@@ -242,8 +255,8 @@ MX_TEST(ast_class_members) {
 }
 
 MX_TEST(ast_interface) {
-    const auto d =
-            dump("interface I : Base { func a() -> nil; func b() -> float { return 0.0; }; }");
+    const auto d = dump(
+            "interface I : Base { func a() -> nil; func b() -> float { return 0.0; }; }");
     CHECK(has(d, "Interface I : Base"));
     CHECK(has(d, "IMethod a -> nil"));
     CHECK(has(d, "IMethod b -> float (default)"));
@@ -268,7 +281,8 @@ MX_TEST(ast_type_struct) {
 }
 
 MX_TEST(ast_generic_class) {
-    const auto d = dump("class Box<T> { public: let v: T; func get() -> T { return self; } }");
+    const auto d =
+            dump("class Box<T> { public: let v: T; func get() -> T { return self; } }");
     CHECK(has(d, "Class Box"));
     CHECK(has(d, "Field v: T"));
     CHECK(has(d, "Method get -> T"));

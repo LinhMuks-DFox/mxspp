@@ -86,7 +86,8 @@ namespace mxs::frontend::parser {
                     g::field_def_class, g::constructor_def, g::destructor_def,
                     g::method_def, g::operator_def, g::static_member, g::interface_def,
                     g::interface_member, g::enum_def, g::enum_variant, g::type_def,
-                    g::field_decl, g::annotation, g::annotation_arg>,
+                    g::field_decl, g::annotation, g::annotation_arg, g::match_expr,
+                    g::case_clause, g::bind_pattern, g::wildcard_pattern, g::block_expr>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -123,6 +124,8 @@ namespace mxs::frontend::parser {
     }
 
     static std::unique_ptr<ast::Expression> to_expr(const Node &n);
+    static std::unique_ptr<ast::Block> to_block(const Node &n);
+    static std::unique_ptr<ast::MXASTNode> to_stmt(const Node &n);
 
     static std::unique_ptr<ast::Expression> to_postfix(const Node &n) {
         // postfix_expr kept only when it has >1 child, e.g. callee + call_args.
@@ -156,6 +159,48 @@ namespace mxs::frontend::parser {
             return e;
         }
         if (n.is_type<g::nil_literal>()) return mk<ast::NilLiteral>();
+        if (n.is_type<g::match_expr>()) {
+            auto m = mk<ast::MatchExpr>();
+            for (const auto &c : n.children) {
+                if (!c->is_type<g::case_clause>()) {
+                    m->subject = to_expr(*c);// the matched expression (first child)
+                    continue;
+                }
+                ast::MatchExpr::Case cs;
+                const Node &pat = *c->children[0];
+                const Node &body = *c->children[1];
+                if (pat.is_type<g::bind_pattern>()) {// name: Type
+                    cs.binding = content_of(*pat.children[0]);
+                    cs.typeName = content_of(*pat.children[1]);
+                } else if (pat.is_type<g::wildcard_pattern>()) {
+                    cs.isWildcard = true;
+                } else if (pat.is_type<g::identifier>()) {
+                    cs.binding = content_of(pat);// plain binding (always matches)
+                } else {
+                    cs.literal = to_expr(pat);// literal pattern (matches by equality)
+                }
+                // A `{ ... }` arm body parses as a block_expr (statements + optional trailing
+                // value-expression). Build a Block, wrapping any trailing expression as an
+                // ExprStatement so the arm's value is the block's last expression.
+                if (body.is_type<g::block>() || body.is_type<g::block_expr>()) {
+                    auto blk = mk<ast::Block>();
+                    for (const auto &s : body.children) {
+                        if (auto st = to_stmt(*s))
+                            blk->statements.push_back(std::move(st));
+                        else {
+                            auto es = mk<ast::ExprStatement>();
+                            es->expr = to_expr(*s);
+                            blk->statements.push_back(std::move(es));
+                        }
+                    }
+                    cs.body = std::move(blk);
+                } else {
+                    cs.body = to_expr(body);
+                }
+                m->cases.push_back(std::move(cs));
+            }
+            return m;
+        }
         if (n.is_type<g::identifier>()) {
             auto e = mk<ast::Identifier>();
             e->name = content_of(n);

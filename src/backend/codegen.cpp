@@ -647,6 +647,24 @@ namespace mxs::backend::codegen {
                 }
                 locals = saved;
             }
+            // A block evaluated as an expression (a match arm): its value is the last
+            // expression-statement's value (other statements run for their effects).
+            llvm::Value *blockValue(const ast::Block *blk) {
+                auto saved = locals;
+                llvm::Value *val = nil();
+                for (const auto &s : blk->statements) {
+                    if (terminated()) break;
+                    if (const auto *es =
+                                dynamic_cast<const ast::ExprStatement *>(s.get()))
+                        val = es->expr ? expr(es->expr.get()) : nil();
+                    else {
+                        stmt(s.get());
+                        val = nil();
+                    }
+                }
+                locals = saved;
+                return val;
+            }
             void emitFunction(const ast::FunctionDef *fn);
         };
 
@@ -773,6 +791,53 @@ namespace mxs::backend::codegen {
                     return nil();
                 }
                 return B.CreateCall(f, argv, "call");
+            }
+            if (const auto *m = dynamic_cast<const ast::MatchExpr *>(n)) {
+                // Evaluate the subject once; try each case in order; the first matching arm's
+                // body value is the match's value (nil if none matches). Type-binding patterns
+                // (`x: Type`) test the runtime type — this is the match-based error model.
+                llvm::Value *subj = m->subject ? expr(m->subject.get()) : nil();
+                if (!subj) return nullptr;
+                auto *result = allocaTy(ptr, "match.result");
+                B.CreateStore(nil(), result);
+                auto *mergeBB = llvm::BasicBlock::Create(C, "match.end");
+                for (const auto &cs : m->cases) {
+                    auto *bodyBB = bb("case.body");
+                    auto *nextBB = llvm::BasicBlock::Create(C, "case.next");
+                    llvm::Value *matches = nullptr;
+                    if (cs.typeName) {
+                        auto *t = B.CreateCall(
+                                rt("mxs_is_type", i64, { ptr, ptr }),
+                                { subj, B.CreateGlobalStringPtr(*cs.typeName, "ty") });
+                        matches = B.CreateICmpNE(t, llvm::ConstantInt::get(i64, 0),
+                                                 "tymatch");
+                    } else if (cs.literal) {
+                        llvm::Value *lit = expr(cs.literal.get());
+                        if (!lit) return nullptr;
+                        matches = truthy(B.CreateCall(rt("mxs_op_eq", ptr, { ptr, ptr }),
+                                                      { subj, lit }));
+                    } else {
+                        matches =
+                                llvm::ConstantInt::getTrue(C);// wildcard or plain binding
+                    }
+                    B.CreateCondBr(matches, bodyBB, nextBB);
+                    B.SetInsertPoint(bodyBB);
+                    auto saved = locals;
+                    if (!cs.binding.empty()) bind(cs.binding, subj, /*mutable=*/false);
+                    const auto *blk = dynamic_cast<const ast::Block *>(cs.body.get());
+                    llvm::Value *val = blk ? blockValue(blk) : expr(cs.body.get());
+                    if (!terminated()) {
+                        if (val) B.CreateStore(val, result);
+                        B.CreateBr(mergeBB);
+                    }
+                    locals = saved;
+                    curFn->insert(curFn->end(), nextBB);
+                    B.SetInsertPoint(nextBB);
+                }
+                B.CreateBr(mergeBB);// no case matched -> result stays nil
+                curFn->insert(curFn->end(), mergeBB);
+                B.SetInsertPoint(mergeBB);
+                return B.CreateLoad(ptr, result, "match.val");
             }
             err("unsupported expression");
             return nullptr;

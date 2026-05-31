@@ -23,9 +23,8 @@ namespace mxs::frontend::grammar {
     // keyword list below; this guard stops keywords like `let`/`func` from being parsed
     // as ordinary identifiers (which previously caused silent misparses).
     struct reserved_word;
-    struct identifier
-        : pegtl::seq<pegtl::not_at<reserved_word>, identifier_first,
-                     pegtl::star<identifier_other>> { };
+    struct identifier : pegtl::seq<pegtl::not_at<reserved_word>, identifier_first,
+                                   pegtl::star<identifier_other>> { };
 
     // Helper to ensure keywords are not prefixes of identifiers
     // Helper to ensure keywords are not prefixes of identifiers
@@ -49,9 +48,8 @@ namespace mxs::frontend::grammar {
 
     // Comments
     // MXScript line comments use '#' (as in every example); '//' is also accepted.
-    struct line_comment
-        : pegtl::seq<pegtl::sor<pegtl::string<'/', '/'>, pegtl::one<'#'>>,
-                     pegtl::until<pegtl::eolf>> { };
+    struct line_comment : pegtl::seq<pegtl::sor<pegtl::string<'/', '/'>, pegtl::one<'#'>>,
+                                     pegtl::until<pegtl::eolf>> { };
     struct block_comment
         : pegtl::seq<pegtl::string<'/', '*'>, pegtl::until<pegtl::string<'*', '/'>>> { };
     struct comment : pegtl::sor<line_comment, block_comment> { };
@@ -175,8 +173,7 @@ namespace mxs::frontend::grammar {
 
     struct additive_op : pegtl::sor<pegtl::one<'+'>, pegtl::one<'-'>> { };
     struct additive_expr
-        : pegtl::list<multiplicative_expr,
-                      pegtl::seq<ignored, additive_op, ignored>> { };
+        : pegtl::list<multiplicative_expr, pegtl::seq<ignored, additive_op, ignored>> { };
 
     struct range_op : pegtl::string<'.', '.'> { };
     struct range_expr
@@ -239,14 +236,18 @@ namespace mxs::frontend::grammar {
                      pegtl::star<case_clause, ignored>, pegtl::one<'}'>> { };
 
     struct pattern_list;// Forward declare for recursion
+    // A type-binding pattern: `name: Type` (G3) — binds the subject to `name` when it is of
+    // type `Type`. The core of the match-based error model (`case err: Error => ...`).
+    struct bind_pattern
+        : pegtl::seq<identifier, ignored, pegtl::one<':'>, ignored, type_spec> { };
+    struct wildcard_pattern : pegtl::one<'_'> { };
     struct pattern
-        : pegtl::sor<literal,
+        : pegtl::sor<literal, bind_pattern, wildcard_pattern,
                      pegtl::seq<identifier,
                                 pegtl::opt<ignored, pegtl::one<'('>, ignored,
                                            pattern_list, ignored, pegtl::one<')'>>>,
                      pegtl::seq<pegtl::one<'('>, ignored, pattern_list, ignored,
-                                pegtl::one<')'>>,
-                     pegtl::one<'_'>> { };
+                                pegtl::one<')'>>> { };
     struct pattern_list
         : pegtl::list<pattern, pegtl::seq<ignored, pegtl::one<','>, ignored>> { };
 
@@ -286,10 +287,9 @@ namespace mxs::frontend::grammar {
     struct statement
         : pegtl::sor<let_stmt, control_stmt, expression_stmt, assert_stmt, defer_stmt> {
     };
-    struct block
-        : pegtl::seq<pegtl::one<'{'>, ignored,
-                     pegtl::star<pegtl::seq<statement, ignored>>,
-                     pegtl::must<pegtl::one<'}'>>> { };
+    struct block : pegtl::seq<pegtl::one<'{'>, ignored,
+                              pegtl::star<pegtl::seq<statement, ignored>>,
+                              pegtl::must<pegtl::one<'}'>>> { };
 
     // ===================================================================
     // Definitions

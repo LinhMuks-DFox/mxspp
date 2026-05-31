@@ -84,7 +84,8 @@ namespace mxs::frontend {
             IfStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> condition;
             std::unique_ptr<Block> thenBlock;
-            std::unique_ptr<Statement> elseBranch;// a Block, or another IfStatement (else-if)
+            std::unique_ptr<Statement>
+                    elseBranch;// a Block, or another IfStatement (else-if)
 
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
@@ -126,7 +127,8 @@ namespace mxs::frontend {
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
-        class UntilStatement : public virtual Statement {// pre-test: runs while cond is false
+        class UntilStatement
+            : public virtual Statement {// pre-test: runs while cond is false
         public:
             UntilStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> condition;
@@ -134,7 +136,8 @@ namespace mxs::frontend {
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
-        class DoUntilStatement : public virtual Statement {// post-test: runs at least once
+        class DoUntilStatement
+            : public virtual Statement {// post-test: runs at least once
         public:
             DoUntilStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Block> body;
@@ -172,7 +175,7 @@ namespace mxs::frontend {
             std::vector<std::unique_ptr<Parameter>> params;
             std::optional<std::string> returnTypeName;
             std::unique_ptr<Block> body;
-            bool isForeign = false;   // @@foreign: bodyless, bound to an external symbol
+            bool isForeign = false;// @@foreign: bodyless, bound to an external symbol
             std::string foreignSymbol;// external symbol (defaults to `name` if empty)
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
@@ -236,7 +239,8 @@ namespace mxs::frontend {
             ClassDef() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
             std::optional<std::string> baseType;
-            std::vector<std::unique_ptr<MXASTNode>> members;// FieldDecl/Method/Ctor/Dtor/Operator
+            std::vector<std::unique_ptr<MXASTNode>>
+                    members;// FieldDecl/Method/Ctor/Dtor/Operator
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
@@ -376,6 +380,29 @@ namespace mxs::frontend {
         public:
             MatchStatement() : core::MXObject(false), MXASTNode(false) { }
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // A match expression (docs §6 error model / pattern matching): evaluates `subject`,
+        // tries each case in order, and yields the matching arm's body value. Patterns:
+        // type-binding (`name: Type` — binds when the subject is of that type; central to the
+        // match-based error handling, e.g. `case err: Error => ...`), wildcard `_`, a plain
+        // binding `name` (always matches), or a literal (matches by equality). An arm body is
+        // an expression or a block (a block yields its last expression-statement's value).
+        class MatchExpr : public virtual Expression {
+        public:
+            MatchExpr() : core::MXObject(false), MXASTNode(false) { }
+            struct Case {
+                std::string binding;// bound name ("" if none/wildcard/literal)
+                std::optional<std::string> typeName;// type-binding pattern's type
+                std::unique_ptr<Expression> literal;// literal pattern (else null)
+                bool isWildcard = false;
+                std::unique_ptr<MXASTNode> body;// an Expression or a Block
+            };
+            std::unique_ptr<Expression> subject;
+            std::vector<Case> cases;
+
+            llvm::Value *
+            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
     }// namespace ast
