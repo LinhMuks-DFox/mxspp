@@ -1,0 +1,17 @@
+# Object-mode regression: the for-in loop variable is scoped to the loop — it must neither
+# leak out nor clobber a same-named binding in the enclosing scope.
+# Run with:  mxs run-obj example/examples/obj_scope.mxs
+# Expected output:
+#   0
+#   1
+#   2
+#   100
+
+func main() -> int {
+    let i = 100;
+    for i in 0..3 {
+        println(i);     # 0, 1, 2 — the loop's own i
+    }
+    println(i);         # 100 — the outer i is intact
+    return 0;
+}

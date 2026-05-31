@@ -32,6 +32,17 @@ func print(x: int) -> nil { __print_int(0, x); }
 func eprintln(x: int) -> nil { __println_int(1, x); }
 )MXS";
 
+    // The object-mode prelude. In object mode every value is a boxed MXObject*, so the print
+    // family binds DIRECTLY (via generic @@foreign — no per-function codegen) to the runtime's
+    // polymorphic print symbols, each taking one MXObject*. `any` is the dynamic object type
+    // (every object-mode parameter lowers to a boxed ptr regardless of annotation).
+    constexpr const char *kObjPrelude = R"MXS(
+@@foreign(symbol_name="mxs_println_obj")  func println(x: any) -> nil;
+@@foreign(symbol_name="mxs_print_obj")    func print(x: any) -> nil;
+@@foreign(symbol_name="mxs_eprintln_obj") func eprintln(x: any) -> nil;
+@@foreign(symbol_name="mxs_eprint_obj")   func eprint(x: any) -> nil;
+)MXS";
+
     std::string read_file(const std::string &path, bool &ok) {
         std::ifstream f(path);
         if (!f) {
@@ -71,8 +82,8 @@ int main(int argc, char **argv) {
     if (args.empty() || (args.size() == 1 && args[0] == "shell"))
         return mxs::shell::repl(kPrelude, runtime_bc_path());
 
-    // Object-mode: values are boxed MXObject*; arithmetic + println go through dynamic
-    // dispatch. No prelude (println is intrinsic in object mode).
+    // Object-mode: values are boxed MXObject*; arithmetic, comparisons and the print family
+    // all go through dynamic dispatch / generic @@foreign bindings (kObjPrelude).
     if (args.size() == 2 && args[0] == "run-obj") {
         bool ok = false;
         const std::string source = read_file(args[1], ok);
@@ -84,6 +95,13 @@ int main(int argc, char **argv) {
         if (!tu) {
             std::cerr << "error: failed to parse " << args[1] << "\n";
             return 1;
+        }
+        // Prepend the object-mode std prelude (parsed separately so user line numbers stay
+        // accurate). println/print/... resolve through it like any other call — no hardcoding.
+        if (auto prelude = parser::parse_to_ast(kObjPrelude, "<obj-prelude>")) {
+            tu->statements.insert(tu->statements.begin(),
+                                  std::make_move_iterator(prelude->statements.begin()),
+                                  std::make_move_iterator(prelude->statements.end()));
         }
         auto context = std::make_unique<llvm::LLVMContext>();
         auto module = mxs::backend::codegen::compile_obj(*tu, *context, args[1]);

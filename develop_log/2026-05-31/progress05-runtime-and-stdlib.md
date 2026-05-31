@@ -65,9 +65,41 @@ library has two layers (per docs/type_system.md §8, docs/ffi.md): an **mxs-side
   `println(2 + 3 * 4)` → 14; `println(1.5 + 2)` → **3.5** (the same `+` promotes int→float at
   runtime — §8 dynamic dispatch in a compiled + JIT'd program). Slice = main + literals + +/-/* +
   println.
-- NEXT: extend object-mode to variables / functions / control flow / comparisons; strings
-  (`MXString`); §8 *fast-dispatch* typed ops (`mxs_integer_add`); reconcile the tagged object with
-  core's `MXObject` class hierarchy + RTTI; then containers + the recoverable Error model.
+
+## Object-mode codegen — full programs (2026-05-31)
+Extended the object model from the narrow slice to **whole programs**. Everything is a boxed
+`MXObject*` (LLVM `ptr`); every mxs function takes/returns `ptr`, except `main` (returns `i64`, the
+JIT entry, via `mxs_obj_as_int` on its value) and `-> nil` functions (return `void`).
+
+- **Runtime (runtime.cpp).** Expanded the object model: added `MX_STR` (heap string, malloc/strdup)
+  and `MX_NIL` tags; `mxs_box_str`/`mxs_box_nil`; `mxs_op_div`/`mod` (panic on zero), `mxs_op_neg`,
+  `mxs_op_not`; the full comparison family `mxs_op_lt/le/gt/ge/eq/ne` (each returns a **boxed
+  bool**; strings compare lexicographically, numbers numerically, mixing string vs number panics —
+  except `eq`/`ne`, which are total and return false/true); string concatenation in `mxs_op_add`;
+  and the polymorphic print symbols `mxs_print_obj`/`mxs_println_obj`/`mxs_eprint_obj`/
+  `mxs_eprintln_obj` the stdlib binds to.
+- **Codegen (backend/codegen.cpp).** Rewrote `compile_obj` as a full **two-pass** object-mode
+  compiler (`ObjGen`): pass 1 declares every function prototype (all-`ptr` params; `ptr`/`void`/
+  `i64` returns) so recursion/forward calls resolve; pass 2 emits bodies. Supports literals
+  (incl. strings/nil), identifiers, arithmetic + comparison via `mxs_op_*`, `&&`/`||` with proper
+  short-circuit (PHI of a boxed bool), unary `-`/`!`/`+`, plain + compound assignment, calls
+  (generic resolution; void-returning calls box `nil` as their value), `let`, `return`,
+  `if/else`, `loop`, `until`, `do-until`, `for-in` ranges (i64 counter, loop var re-boxed each
+  iteration), `break`/`continue`, and `assert` (panics on false). Conditions go through
+  `mxs_obj_truthy`.
+- **NO per-function hardcoding (D3 upheld).** `println`/`print`/`eprintln`/`eprint` are now an
+  **object-mode prelude** (`kObjPrelude` in driver/main.cpp) of generic `@@foreign` declarations
+  binding straight to the polymorphic runtime symbols (each `void(MXObject*)`). They resolve through
+  `funcs` like any other call — the compiler special-cases nothing.
+- **Verified in Docker** (`python3 rebuild.py`, exit 0; clang-format clean): `ctest` 2/2 green
+  (frontend + runtime, the latter now **7 cases** incl. fork-based death tests for every panic
+  path). `mxs run-obj example/examples/obj_fib.mxs` → **55** (recursion + comparison + arithmetic +
+  returned object). `mxs run-obj example/examples/obj_features.mxs` → `hello, world / 10 / 6 / 3.5 /
+  true / true` (string concat, `for-in`, `until`, int→float promotion, comparison, logical not).
+- NEXT: containers (List/Dict/Array/Tuple, type_system §3.3); the recoverable Error model
+  (`raise`/`match`, plus syntax/numerical error reporting); §8 *fast-dispatch* typed ops
+  (`mxs_integer_add`, …) as an optimization over `mxs_op_*`; reconcile the tagged runtime
+  `MXObject` with core's `MXObject` class hierarchy + RTTI; the shell/REPL on the object-mode path.
 
 ## Open / TODO (the rest of "complete stdlib + runtime")
 - **ORC JIT**: DONE — `mxs run <file>` executes (loads runtime.bc, JITs main). (commit 9958b6a)
