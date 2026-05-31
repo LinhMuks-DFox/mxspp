@@ -6,3 +6,9 @@ target_include_directories(frontend_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(frontend_test PRIVATE frontend core)
 
 add_test(NAME frontend_test COMMAND frontend_test)
+
+# Runtime object-model tests — pure C++ (no LLVM); links the compiled runtime objects.
+add_executable(runtime_test runtime_test.cpp $<TARGET_OBJECTS:runtime_obj>)
+target_include_directories(runtime_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_test(NAME runtime_test COMMAND runtime_test)

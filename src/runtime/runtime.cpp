@@ -56,3 +56,70 @@ extern "C" {
     }
 
 }// extern "C"
+
+// =============================================================================
+// Object model (start) — a tagged boxed value + dynamic dispatch (docs §8).
+// This is the runtime substrate for "everything is an object": boxed values flow
+// through the program as MXObject*, and dynamic-dispatch ops (mxs_op_*) inspect the
+// tag at runtime. (Fast-path typed ops, RTTI via MXRuntimeTypeInfo, and reconciling
+// with core's MXObject class hierarchy come next; the tag is the first cut.)
+// =============================================================================
+namespace {
+    enum MXTag : std::int64_t { MX_INT = 0, MX_FLOAT = 1, MX_BOOL = 2 };
+    struct MXObject {
+        MXTag tag;
+        union {
+            std::int64_t i;
+            double f;
+        };
+    };
+    double as_double(const MXObject *o) {
+        return o->tag == MX_FLOAT ? o->f : static_cast<double>(o->i);
+    }
+}// namespace
+
+extern "C" {
+
+    MXObject *mxs_box_int(std::int64_t v) { return new MXObject{ MX_INT, { .i = v } }; }
+    MXObject *mxs_box_bool(std::int64_t v) { return new MXObject{ MX_BOOL, { .i = !!v } }; }
+    MXObject *mxs_box_float(double v) {
+        auto *o = new MXObject{ MX_FLOAT };
+        o->f = v;
+        return o;
+    }
+
+    std::int64_t mxs_obj_tag(const MXObject *o) { return o->tag; }
+    std::int64_t mxs_obj_as_int(const MXObject *o) {
+        return o->tag == MX_FLOAT ? static_cast<std::int64_t>(o->f) : o->i;
+    }
+    double mxs_obj_as_float(const MXObject *o) { return as_double(o); }
+    std::int64_t mxs_obj_truthy(const MXObject *o) {
+        return o->tag == MX_FLOAT ? (o->f != 0.0) : (o->i != 0);
+    }
+    void mxs_obj_free(MXObject *o) { delete o; }
+
+    // Dynamic-dispatch arithmetic: int op int stays int; any float promotes to float.
+    MXObject *mxs_op_add(MXObject *a, MXObject *b) {
+        if (a->tag == MX_INT && b->tag == MX_INT) return mxs_box_int(a->i + b->i);
+        return mxs_box_float(as_double(a) + as_double(b));
+    }
+    MXObject *mxs_op_sub(MXObject *a, MXObject *b) {
+        if (a->tag == MX_INT && b->tag == MX_INT) return mxs_box_int(a->i - b->i);
+        return mxs_box_float(as_double(a) - as_double(b));
+    }
+    MXObject *mxs_op_mul(MXObject *a, MXObject *b) {
+        if (a->tag == MX_INT && b->tag == MX_INT) return mxs_box_int(a->i * b->i);
+        return mxs_box_float(as_double(a) * as_double(b));
+    }
+
+    // Polymorphic println — dispatches on the runtime tag (one entry point, any type).
+    void mxs_obj_println(std::int64_t stream, const MXObject *o) {
+        std::FILE *st = mxs_stream(stream);
+        switch (o->tag) {
+            case MX_INT: std::fprintf(st, "%lld\n", static_cast<long long>(o->i)); break;
+            case MX_FLOAT: std::fprintf(st, "%g\n", o->f); break;
+            case MX_BOOL: std::fprintf(st, "%s\n", o->i ? "true" : "false"); break;
+        }
+    }
+
+}// extern "C"

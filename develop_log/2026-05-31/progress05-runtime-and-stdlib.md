@@ -54,10 +54,18 @@ library has two layers (per docs/type_system.md §8, docs/ffi.md): an **mxs-side
   `println(fib(10))` → `55`, plus `7` / `3.14` / `true`. Stream routing verified (0→stdout,
   1/2→stderr).
 
+## Object model — started (2026-05-31)
+- Runtime substrate landed: a tagged boxed `MXObject` + `mxs_box_int/float/bool`, dynamic-dispatch
+  `mxs_op_add/sub/mul` (int+int→int, float promotion), polymorphic `mxs_obj_println`, and
+  tag/unbox/truthy accessors — all `extern "C"` in runtime.cpp. Unit-tested (test/runtime_test.cpp,
+  3 cases / 17 checks, pure C++). This is the §8 *dynamic-dispatch* path at the runtime level.
+- NEXT: object-mode codegen (emit `mxs_box_*` + `mxs_op_*` instead of native i64 when values are
+  objects), the §8 *fast-dispatch* typed ops (`mxs_integer_add`), strings (`MXString`), and
+  reconciling the tagged object with core's `MXObject` class hierarchy + RTTI.
+
 ## Open / TODO (the rest of "complete stdlib + runtime")
-- **ORC JIT**: `mxs run <file>` executes directly (load runtime symbols, JIT `main`) — the
-  README's headline feature; removes the external clang/lli step.
-- **Object model**: `MXObject` + `MXInteger`/`MXFloat`/`MXBoolean`/`MXString` (core/ is stubbed),
+- **ORC JIT**: DONE — `mxs run <file>` executes (loads runtime.bc, JITs main). (commit 9958b6a)
+- **Object model**: STARTED (above). Remaining: object-mode codegen + strings + containers +
   then the §8 fast-dispatch arithmetic (`mxs_integer_add`, …) + dynamic dispatch (`mxs_op_add`,
   `op_from`/`cast`). NOTE: this needs an **object-model codegen pivot** — current codegen is
   native-numeric (i64/f64). Sequencing decision for Mux when we get there.
