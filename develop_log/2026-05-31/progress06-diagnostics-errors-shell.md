@@ -24,6 +24,12 @@ Good error reporting (syntax errors, numerical/runtime errors) and an interactiv
   example sweep unchanged (11/14 parse); `func f( -> int {...}` reports `1:9 ... one<')'>` with a
   caret at the `(`.
 
+- **REPL shell** (`mxs` / `mxs shell`): JIT-backed read-eval-print — one-line definitions
+  accumulate; expressions are wrapped (`println(EXPR)`), recompiled with the accumulated defs +
+  prelude, and JIT-run. `:q` quits. `jit::run` gained an entry-symbol parameter. Verified in Docker:
+  defining `sq`/`fib` then evaluating `sq(7)`=49, `1+2*3`=7, `fib(10)`=55. (v1: single-line defs,
+  int expressions; multi-line + typed eval later.)
+
 ## Open / TODO
 - **Friendly messages**: replace raw `parse error matching tao::pegtl::one<'}'>` with `expected '}'`
   (PEGTL custom error messages via a control/`raise_message`), and add more `must<>` anchors

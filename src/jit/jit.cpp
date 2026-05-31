@@ -13,8 +13,8 @@
 namespace mxs::jit {
 
     int run(std::unique_ptr<llvm::Module> module,
-            std::unique_ptr<llvm::LLVMContext> context,
-            const std::string &runtimeBcPath) {
+            std::unique_ptr<llvm::LLVMContext> context, const std::string &runtimeBcPath,
+            const std::string &entry) {
         using namespace llvm;
 
         InitializeNativeTarget();
@@ -55,13 +55,13 @@ namespace mxs::jit {
             return 1;
         }
 
-        auto sym = jit->lookup("main");
+        auto sym = jit->lookup(entry);
         if (!sym) {
-            logAllUnhandledErrors(sym.takeError(), errs(), "mxs jit (no main): ");
+            logAllUnhandledErrors(sym.takeError(), errs(), "mxs jit (lookup): ");
             return 1;
         }
-        auto *entry = sym->toPtr<int64_t (*)()>();
-        return static_cast<int>(entry());
+        auto *fn = sym->toPtr<int64_t (*)()>();
+        return static_cast<int>(fn());
     }
 
 }// namespace mxs::jit

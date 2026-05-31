@@ -1,6 +1,7 @@
 #include "mxspp/backend/codegen.h"
 #include "mxspp/frontend/parser.h"
 #include "mxspp/jit/jit.h"
+#include "mxspp/shell/shell.h"
 
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -67,6 +68,9 @@ int main(int argc, char **argv) {
     namespace parser = mxs::frontend::parser;
     const std::vector<std::string> args(argv + 1, argv + argc);
 
+    if (args.empty() || (args.size() == 1 && args[0] == "shell"))
+        return mxs::shell::repl(kPrelude, runtime_bc_path());
+
     if (args.size() == 2 &&
         (args[0] == "--dump-ast" || args[0] == "--emit-ir" || args[0] == "run")) {
         bool ok = false;
@@ -108,8 +112,9 @@ int main(int argc, char **argv) {
     }
 
     std::cout << "mxs (MXScript)\n"
-              << "  usage: mxs run        <file.mxs>   # JIT-compile and run main()\n"
-              << "         mxs --emit-ir  <file.mxs>   # lower the AST to LLVM IR\n"
-              << "         mxs --dump-ast <file.mxs>   # parse and print the AST\n";
+              << "  usage: mxs            (or: mxs shell)  # interactive REPL\n"
+              << "         mxs run        <file.mxs>       # JIT-compile and run main()\n"
+              << "         mxs --emit-ir  <file.mxs>       # lower the AST to LLVM IR\n"
+              << "         mxs --dump-ast <file.mxs>       # parse and print the AST\n";
     return 0;
 }

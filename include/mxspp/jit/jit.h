@@ -13,6 +13,7 @@ namespace mxs::jit {
     // `runtimeBcPath` (for the mxs_* fast-dispatch symbols) and resolving libc symbols
     // (printf, ...) from the host process. Returns main()'s value, or a nonzero error code.
     int run(std::unique_ptr<llvm::Module> module,
-            std::unique_ptr<llvm::LLVMContext> context, const std::string &runtimeBcPath);
+            std::unique_ptr<llvm::LLVMContext> context, const std::string &runtimeBcPath,
+            const std::string &entry = "main");
 
 }// namespace mxs::jit
