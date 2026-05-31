@@ -50,10 +50,10 @@ and is the prerequisite for semantic analysis + codegen.
 
 ## Tasks
 (Task files created when each is picked up.)
-- [ ] task01 — fix grammar bugs B1–B4 (+ tests; sync `syntax.ebnf`)
-- [ ] task02 — set up the unit-test harness + 100%-coverage gate (prerequisite for D3)
-- [ ] task03 — AST coverage: control flow (if / for-in / loop / until / do-until / break / continue /
-      assert / defer) + member access `.` / index `[]` / `?` / range
+- [x] [task01 — fix grammar bugs B1–B4 + parser let-value bug](tasks/task01-fix-grammar-and-parser-bugs.md) — done 2026-05-31
+- [~] [task02 — unit-test harness + frontend suite](tasks/task02-unit-test-harness.md) — harness + suite done; 100% gate + CI wiring pending
+- [x] [task03 — AST coverage: control flow](tasks/task03-ast-control-flow.md) — done 2026-05-31
+      (if/for-in/loop/until/do-until/break/continue/assert/defer + range; member/index/`?` → task04)
 - [ ] task04 — AST coverage: OOP (class / interface / `type` / enum + all members) + capture generics
 - [ ] task05 — AST coverage: match (+ patterns) + lambda + annotations (incl. `@@foreign` metadata) +
       import / static-dynamic binding
@@ -74,3 +74,17 @@ and is the prerequisite for semantic analysis + codegen.
 
 ## Agent log
 - 2026-05-31 [ai] Authored from progress02 findings. Tasks not yet started — pending Mux's go / review.
+- 2026-05-31 [ai] Did task01 + task02 (Mux: "fix grammar bugs; fix frontend bugs; add unit tests").
+  Fixed B1 (block_expr ws), B2 (interface ws), B4 (keyword reservation via `reserved_word`),
+  B3 (falls out of B4), and the parser let-value bug (select `identifier_list`; rewrite
+  `to_let`/`parse_sig`). Added `test/` harness + `frontend_test.cpp` (13 cases/78 checks) + CMake
+  wiring. Verified natively: example sweep unchanged (no regressions), all tests pass, `parser.cpp`
+  coverage 96.97% region / 95.67% line / 100% function (llvm-cov). Remaining: push to 100% + wire
+  the coverage gate (task02 TODO), then task03+ (AST coverage of control flow / OOP / match / …).
+  Note: in-container CMake/ctest build unverified (macOS host); changes not yet committed.
+- 2026-05-31 [ai] Mux decided: finish full AST first, then codegen; verify codegen via Docker.
+  Pre-built the Docker dev image (Ubuntu+LLVM-20) in the background — succeeded, ready for codegen.
+  Did task03 (control-flow AST): generalized IfStatement for else-if; added Until/DoUntil/Assert/
+  Defer nodes; wired selector + to_stmt + dumper + 3 tests. Suite 16 cases / 90 checks, all green.
+  Verified a recursive `fib` produces a correct AST. Next: task04 (OOP) — class/interface/enum/type
+  + members, plus member/index/`?` postfix.

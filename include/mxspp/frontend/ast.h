@@ -84,7 +84,7 @@ namespace mxs::frontend {
             IfStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> condition;
             std::unique_ptr<Block> thenBlock;
-            std::unique_ptr<Block> elseBlock;
+            std::unique_ptr<Statement> elseBranch;// a Block, or another IfStatement (else-if)
 
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
@@ -123,6 +123,36 @@ namespace mxs::frontend {
         class ContinueStatement : public virtual Statement {
         public:
             ContinueStatement() : core::MXObject(false), MXASTNode(false) { }
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class UntilStatement : public virtual Statement {// pre-test: runs while cond is false
+        public:
+            UntilStatement() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Expression> condition;
+            std::unique_ptr<Block> body;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class DoUntilStatement : public virtual Statement {// post-test: runs at least once
+        public:
+            DoUntilStatement() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Block> body;
+            std::unique_ptr<Expression> condition;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class AssertStatement : public virtual Statement {
+        public:
+            AssertStatement() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Expression> expr;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class DeferStatement : public virtual Statement {
+        public:
+            DeferStatement() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Block> body;
             void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 

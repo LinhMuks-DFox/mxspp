@@ -29,6 +29,10 @@ namespace mxs::frontend::ast {
     void LoopStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
     void BreakStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
     void ContinueStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
+    void UntilStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
+    void DoUntilStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
+    void AssertStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
+    void DeferStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
     void FunctionDef::codegen(mxs::backend::codegen::CodegenContext &) const { }
     void MatchStatement::codegen(mxs::backend::codegen::CodegenContext &) const { }
 

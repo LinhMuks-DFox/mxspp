@@ -116,3 +116,7 @@ install(DIRECTORY include/ DESTINATION include)
 # ======================================================================
 add_subdirectory(src)
 # ======================================================================
+
+# --- Unit tests ---
+enable_testing()
+add_subdirectory(test)

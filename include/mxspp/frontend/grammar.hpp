@@ -19,7 +19,13 @@ namespace mxs::frontend::grammar {
     // Basic characters
     struct identifier_first : pegtl::sor<pegtl::alpha, pegtl::one<'_'>> { };
     struct identifier_other : pegtl::sor<pegtl::alnum, pegtl::one<'_'>> { };
-    struct identifier : pegtl::seq<identifier_first, pegtl::star<identifier_other>> { };
+    // An identifier may not be a reserved keyword. `reserved_word` is defined after the
+    // keyword list below; this guard stops keywords like `let`/`func` from being parsed
+    // as ordinary identifiers (which previously caused silent misparses).
+    struct reserved_word;
+    struct identifier
+        : pegtl::seq<pegtl::not_at<reserved_word>, identifier_first,
+                     pegtl::star<identifier_other>> { };
 
     // Helper to ensure keywords are not prefixes of identifiers
     // Helper to ensure keywords are not prefixes of identifiers
@@ -84,6 +90,14 @@ namespace mxs::frontend::grammar {
     struct K_STATIC : keyword<'s', 't', 'a', 't', 'i', 'c'> { };
     struct K_TYPE : keyword<'t', 'y', 'p', 'e'> { };
     struct K_UNTIL : keyword<'u', 'n', 't', 'i', 'l'> { };
+
+    // The complete set of reserved keywords; an identifier may not match any of these.
+    struct reserved_word
+        : pegtl::sor<K_AS, K_ASSERT, K_BREAK, K_CASE, K_CLASS, K_CONTINUE, K_DEFER, K_DO,
+                     K_DYNAMIC, K_ELSE, K_ENUM, K_EXPORT, K_FOR, K_FUNC, K_IF, K_IMPORT,
+                     K_IN, K_INTERFACE, K_LET, K_LOOP, K_MATCH, K_MUT, K_OPERATOR,
+                     K_OVERRIDE, K_PRIVATE, K_PUBLIC, K_RAISE, K_RETURN, K_STATIC, K_TYPE,
+                     K_UNTIL> { };
 
     // ===================================================================
     // General Components
@@ -210,8 +224,10 @@ namespace mxs::frontend::grammar {
     struct raise_expr : pegtl::seq<K_RAISE, ignored, expression> { };
     struct lambda_expr : pegtl::seq<func_sig, ignored, pegtl::string<'=', '>'>, ignored,
                                     pegtl::sor<expression, block>> { };
-    struct block_expr : pegtl::seq<pegtl::one<'{'>, ignored, pegtl::star<statement>,
-                                   pegtl::opt<expression>, ignored, pegtl::one<'}'>> { };
+    struct block_expr
+        : pegtl::seq<pegtl::one<'{'>, ignored,
+                     pegtl::star<pegtl::seq<statement, ignored>>,
+                     pegtl::opt<pegtl::seq<expression, ignored>>, pegtl::one<'}'>> { };
 
     struct case_clause
         : pegtl::seq<K_CASE, ignored, pattern, ignored, pegtl::string<'=', '>'>, ignored,
@@ -317,7 +333,8 @@ namespace mxs::frontend::grammar {
 
     struct interface_member
         : pegtl::seq<K_FUNC, ignored, identifier, pegtl::opt<ignored, generic_param>,
-                     ignored, func_sig, pegtl::opt<ignored, block>, pegtl::one<';'>> { };
+                     ignored, func_sig, pegtl::opt<ignored, block>, ignored,
+                     pegtl::one<';'>> { };
     struct interface_def
         : pegtl::seq<K_INTERFACE, ignored, identifier, pegtl::opt<ignored, generic_param>,
                      pegtl::opt<ignored, pegtl::one<':'>, ignored, type_spec>, ignored,

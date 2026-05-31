@@ -51,8 +51,11 @@ namespace mxs::frontend::parser {
                                   g::additive_op, g::range_op, g::relational_op,
                                   g::equality_op, g::logic_and_op, g::logic_or_op,
                                   g::assign_op>,
-            pt::remove_content::on<g::K_MUT, g::let_stmt, g::return_stmt,
-                                   g::expression_stmt, g::block, g::func_def, g::func_sig,
+            pt::remove_content::on<g::K_MUT, g::identifier_list, g::let_stmt,
+                                   g::return_stmt, g::expression_stmt, g::block,
+                                   g::if_stmt, g::for_in_stmt, g::loop_stmt, g::until_stmt,
+                                   g::do_until_stmt, g::break_stmt, g::continue_stmt,
+                                   g::assert_stmt, g::defer_stmt, g::func_def, g::func_sig,
                                    g::param, g::call_args>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
@@ -158,21 +161,21 @@ namespace mxs::frontend::parser {
     }
 
     static std::unique_ptr<ast::MXASTNode> to_let(const Node &n) {
+        // Children: [K_MUT?, identifier_list, type_spec?, initializer-expression?].
+        // Selecting identifier_list groups the names, so a bare-identifier initializer
+        // (e.g. `let z = y;`) is a distinct child and no longer mistaken for a name.
         auto s = mk<ast::LetStatement>();
-        std::vector<const Node *> rest;
         for (const auto &c : n.children) {
             if (c->is_type<g::K_MUT>()) {
                 s->isMut = true;
-                continue;
+            } else if (c->is_type<g::identifier_list>()) {
+                for (const auto &id : c->children) s->names.push_back(content_of(*id));
+            } else if (c->is_type<g::type_spec>()) {
+                s->typeName = content_of(*c);
+            } else {
+                s->value = to_expr(*c);
             }
-            rest.push_back(c.get());
         }
-        std::size_t idx = 0;
-        while (idx < rest.size() && rest[idx]->is_type<g::identifier>())
-            s->names.push_back(content_of(*rest[idx++]));
-        if (idx < rest.size() && rest[idx]->is_type<g::type_spec>())
-            s->typeName = content_of(*rest[idx++]);
-        if (idx < rest.size()) s->value = to_expr(*rest[idx]);
         return s;
     }
 
@@ -182,8 +185,9 @@ namespace mxs::frontend::parser {
                 std::string ty;
                 std::vector<std::string> names;
                 for (const auto &pc : c->children) {
-                    if (pc->is_type<g::identifier>())
-                        names.push_back(content_of(*pc));
+                    if (pc->is_type<g::identifier_list>())
+                        for (const auto &id : pc->children)
+                            names.push_back(content_of(*id));
                     else if (pc->is_type<g::type_spec>())
                         ty = content_of(*pc);
                 }
@@ -225,8 +229,65 @@ namespace mxs::frontend::parser {
             if (!n.children.empty()) s->expr = to_expr(*n.children[0]);
             return s;
         }
+        if (n.is_type<g::if_stmt>()) {
+            // children: [condition-expr, then-block, (else: block | if_stmt)?]
+            auto s = mk<ast::IfStatement>();
+            if (!n.children.empty()) s->condition = to_expr(*n.children[0]);
+            if (n.children.size() > 1) s->thenBlock = to_block(*n.children[1]);
+            if (n.children.size() > 2) {
+                const Node &e = *n.children[2];
+                if (e.is_type<g::if_stmt>()) {// else-if -> nested IfStatement
+                    auto inner = to_stmt(e);
+                    s->elseBranch.reset(dynamic_cast<ast::Statement *>(inner.release()));
+                } else {
+                    s->elseBranch = to_block(e);
+                }
+            }
+            return s;
+        }
+        if (n.is_type<g::for_in_stmt>()) {
+            // children: [K_MUT?, identifier(var), iterable-expr, block]
+            auto s = mk<ast::ForInStatement>();
+            for (const auto &c : n.children) {
+                if (c->is_type<g::K_MUT>()) s->isMut = true;
+                else if (c->is_type<g::identifier>() && s->var.empty())
+                    s->var = content_of(*c);
+                else if (c->is_type<g::block>()) s->body = to_block(*c);
+                else s->iterable = to_expr(*c);
+            }
+            return s;
+        }
+        if (n.is_type<g::loop_stmt>()) {
+            auto s = mk<ast::LoopStatement>();
+            if (!n.children.empty()) s->body = to_block(*n.children[0]);
+            return s;
+        }
+        if (n.is_type<g::until_stmt>()) {// children: [cond-expr, block]
+            auto s = mk<ast::UntilStatement>();
+            if (!n.children.empty()) s->condition = to_expr(*n.children[0]);
+            if (n.children.size() > 1) s->body = to_block(*n.children[1]);
+            return s;
+        }
+        if (n.is_type<g::do_until_stmt>()) {// children: [block, cond-expr]
+            auto s = mk<ast::DoUntilStatement>();
+            if (!n.children.empty()) s->body = to_block(*n.children[0]);
+            if (n.children.size() > 1) s->condition = to_expr(*n.children[1]);
+            return s;
+        }
+        if (n.is_type<g::break_stmt>()) return mk<ast::BreakStatement>();
+        if (n.is_type<g::continue_stmt>()) return mk<ast::ContinueStatement>();
+        if (n.is_type<g::assert_stmt>()) {
+            auto s = mk<ast::AssertStatement>();
+            if (!n.children.empty()) s->expr = to_expr(*n.children[0]);
+            return s;
+        }
+        if (n.is_type<g::defer_stmt>()) {
+            auto s = mk<ast::DeferStatement>();
+            if (!n.children.empty()) s->body = to_block(*n.children[0]);
+            return s;
+        }
         if (n.is_type<g::block>()) return to_block(n);
-        return nullptr;// out of task01 scope (control flow / class / match / ...)
+        return nullptr;// still out of scope: class / interface / enum / match / ...
     }
 
     std::unique_ptr<ast::TranslationUnit> parse_to_ast(std::string_view source,
@@ -294,6 +355,49 @@ namespace mxs::frontend::parser {
             pad(os, depth);
             os << "ExprStmt\n";
             if (e->expr) dump(e->expr.get(), os, depth + 1);
+        } else if (auto *i = dynamic_cast<const ast::IfStatement *>(node)) {
+            pad(os, depth);
+            os << "If\n";
+            dump(i->condition.get(), os, depth + 1);
+            if (i->thenBlock) dump(i->thenBlock.get(), os, depth + 1);
+            if (i->elseBranch) {
+                pad(os, depth + 1);
+                os << "Else\n";
+                dump(i->elseBranch.get(), os, depth + 2);
+            }
+        } else if (auto *fr = dynamic_cast<const ast::ForInStatement *>(node)) {
+            pad(os, depth);
+            os << "For" << (fr->isMut ? " mut" : "") << " " << fr->var << " in\n";
+            if (fr->iterable) dump(fr->iterable.get(), os, depth + 1);
+            if (fr->body) dump(fr->body.get(), os, depth + 1);
+        } else if (auto *lp = dynamic_cast<const ast::LoopStatement *>(node)) {
+            pad(os, depth);
+            os << "Loop\n";
+            if (lp->body) dump(lp->body.get(), os, depth + 1);
+        } else if (auto *u = dynamic_cast<const ast::UntilStatement *>(node)) {
+            pad(os, depth);
+            os << "Until\n";
+            if (u->condition) dump(u->condition.get(), os, depth + 1);
+            if (u->body) dump(u->body.get(), os, depth + 1);
+        } else if (auto *du = dynamic_cast<const ast::DoUntilStatement *>(node)) {
+            pad(os, depth);
+            os << "DoUntil\n";
+            if (du->body) dump(du->body.get(), os, depth + 1);
+            if (du->condition) dump(du->condition.get(), os, depth + 1);
+        } else if (dynamic_cast<const ast::BreakStatement *>(node)) {
+            pad(os, depth);
+            os << "Break\n";
+        } else if (dynamic_cast<const ast::ContinueStatement *>(node)) {
+            pad(os, depth);
+            os << "Continue\n";
+        } else if (auto *as = dynamic_cast<const ast::AssertStatement *>(node)) {
+            pad(os, depth);
+            os << "Assert\n";
+            if (as->expr) dump(as->expr.get(), os, depth + 1);
+        } else if (auto *df = dynamic_cast<const ast::DeferStatement *>(node)) {
+            pad(os, depth);
+            os << "Defer\n";
+            if (df->body) dump(df->body.get(), os, depth + 1);
         } else if (auto *bo = dynamic_cast<const ast::BinaryOp *>(node)) {
             pad(os, depth);
             os << "BinaryOp '" << bo->op << "'\n";
