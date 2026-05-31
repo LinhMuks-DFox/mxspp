@@ -15,6 +15,11 @@
 #include <memory>
 #include <string>
 
+extern "C" {
+void mxs_retain(const mxs::core::MXObject *);
+void mxs_release(const mxs::core::MXObject *);
+}
+
 using mxs::make_immutable_left_value;
 using mxs::make_mutable_left_value;
 using mxs::MXObjectOwned;
@@ -281,6 +286,27 @@ MX_TEST(left_value_immutable_and_mutable) {
     CHECK_MSG(dynamic_cast<const mxs::builtin::MXNil *>(ok.get()) != nullptr,
               "mutable update returns nil");
     CHECK(dynamic_cast<const MXInteger *>(y->rvalue())->to_decimal() == "6");
+}
+
+MX_TEST(refcounting) {
+    // A freshly-created object starts with one reference (the creator's).
+    auto *o = new MXInteger(5);
+    CHECK(o->use_count() == 1);
+    o->retain();
+    CHECK(o->use_count() == 2);
+    o->retain();
+    CHECK(o->use_count() == 3);
+    o->release();
+    CHECK(o->use_count() == 2);
+    o->release();
+    CHECK(o->use_count() == 1);
+    // The extern "C" ABI is the same mechanism and is null-safe.
+    mxs_retain(o);
+    CHECK(o->use_count() == 2);
+    mxs_release(o);
+    CHECK(o->use_count() == 1);
+    mxs_release(nullptr);// no crash on null
+    o->release();// drops the last reference -> the object is freed here
 }
 
 int main() { return mxtest::run_all(); }

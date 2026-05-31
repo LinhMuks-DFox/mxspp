@@ -53,4 +53,20 @@ namespace mxs::core {
     }
 
     auto MXObject::repr() const -> repr_t { return this->get_rtti().name; }
+
+    auto MXObject::retain() const -> void { ++refcount_; }
+    auto MXObject::release() const -> void {
+        if (--refcount_ == 0) delete this;
+    }
+    auto MXObject::use_count() const -> std::size_t { return refcount_; }
+}
+
+extern "C" {
+// JIT-facing reference-counting ABI (progress09). Null-safe.
+void mxs_retain(const mxs::core::MXObject *o) {
+    if (o) o->retain();
+}
+void mxs_release(const mxs::core::MXObject *o) {
+    if (o) o->release();
+}
 }

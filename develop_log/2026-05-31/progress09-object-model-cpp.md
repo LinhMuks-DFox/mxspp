@@ -79,6 +79,21 @@ the canonical design and supersedes the flat model.
   the folding. This is exactly why the two-layer `extern "C"` ABI (D3) matters: it gives LLVM real
   bodies to inline across the mxs/lib boundary.
 
+### D8 — Runtime object ownership: reference counting — Mux, 2026-05-31
+- Cross-`extern "C"`/JIT object lifetime (incl. intermediate temporaries like the result of
+  `b * c` in `a + b * c`) uses **reference counting**, not an arena or tracing GC (aligns with
+  docs §3.3's rc guidance). Each `MXObject` carries a count; `retain()` adds a reference,
+  `release()` drops one and frees at zero. The JIT-facing ABI is `mxs_retain` / `mxs_release`.
+- Convention (to finalize in step ④): a function returning a new object returns it with one
+  reference (the caller owns it); arguments are borrowed (not consumed); codegen releases
+  temporaries once consumed; bindings (`MXLeftValue`) and containers (`MXArrayList`) retain what
+  they hold and release on overwrite/destruction.
+- Reconciling with `MXObjectOwned` (unique_ptr, develop_rule.md): an `MXObjectOwned` is one
+  strong reference held via RAII. To make unique_ptr participate in rc, its deleter should call
+  `release()` (so dropping the unique_ptr drops a reference) — to wire in step ④; until then a
+  freshly-`new`'d object has count 1 and a plain `delete`/unique_ptr is equivalent to releasing
+  the sole reference (no sharing yet), so the rc mechanism added now is safe and additive.
+
 ### D7 — Libraries are an LLIR + exported-symbols contract; any such language qualifies (incl. mxs) — Mux, 2026-05-31
 - The integration boundary is **LLIR + exported, callable symbols** — not C++ specifically. Any
   language that lowers to LLVM IR and exports symbols usable from IR (C, C++, Rust, …) can, in

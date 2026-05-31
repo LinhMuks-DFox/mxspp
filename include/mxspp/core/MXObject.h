@@ -28,10 +28,20 @@ namespace mxs::core {
         virtual auto refer_property(const property_name_t &name) -> MXObjectConstBorrow;
         virtual auto repr() const -> repr_t;
 
+        // Reference counting (the runtime ownership model, progress09 D-temporaries). A freshly
+        // constructed object starts with a count of 1 (the creator's reference). `retain` adds a
+        // reference; `release` drops one and deletes the object when the count reaches zero.
+        // The JIT-facing `mxs_retain` / `mxs_release` ABI wraps these. (Single-threaded for now;
+        // an atomic count comes with concurrency.)
+        auto retain() const -> void;
+        auto release() const -> void;
+        [[nodiscard]] auto use_count() const -> std::size_t;
+
     private:
         std::unordered_map<std::string, MXObjectOwned> dynamic_owned_properties;
         std::unordered_map<std::string, MXObjectShared> dynamic_shared_properties;
         std::mutex lock;
+        mutable std::size_t refcount_ = 1;
     };
 
     template<class T = MXObject>
