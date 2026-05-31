@@ -47,16 +47,21 @@ namespace mxs::frontend::parser {
             Rule,
             pt::store_content::on<g::integer_literal, g::float_literal, g::string_literal,
                                   g::bool_literal, g::nil_literal, g::identifier,
-                                  g::type_spec, g::unary_op, g::multiplicative_op,
-                                  g::additive_op, g::range_op, g::relational_op,
-                                  g::equality_op, g::logic_and_op, g::logic_or_op,
-                                  g::assign_op>,
-            pt::remove_content::on<g::K_MUT, g::identifier_list, g::let_stmt,
-                                   g::return_stmt, g::expression_stmt, g::block,
-                                   g::if_stmt, g::for_in_stmt, g::loop_stmt, g::until_stmt,
+                                  g::type_spec, g::op_symbol, g::unary_op,
+                                  g::multiplicative_op, g::additive_op, g::range_op,
+                                  g::relational_op, g::equality_op, g::logic_and_op,
+                                  g::logic_or_op, g::assign_op>,
+            pt::remove_content::on<g::K_MUT, g::K_OVERRIDE, g::K_STATIC,
+                                   g::identifier_list, g::let_stmt, g::return_stmt,
+                                   g::expression_stmt, g::block, g::if_stmt,
+                                   g::for_in_stmt, g::loop_stmt, g::until_stmt,
                                    g::do_until_stmt, g::break_stmt, g::continue_stmt,
                                    g::assert_stmt, g::defer_stmt, g::func_def, g::func_sig,
-                                   g::param, g::call_args>,
+                                   g::param, g::call_args, g::class_def, g::field_def_class,
+                                   g::constructor_def, g::destructor_def, g::method_def,
+                                   g::operator_def, g::static_member, g::interface_def,
+                                   g::interface_member, g::enum_def, g::enum_variant,
+                                   g::type_def, g::field_decl>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -179,45 +184,188 @@ namespace mxs::frontend::parser {
         return s;
     }
 
-    static void parse_sig(const Node &sig, ast::FunctionDef &f) {
-        for (const auto &c : sig.children) {
-            if (c->is_type<g::param>()) {
-                std::string ty;
-                std::vector<std::string> names;
-                for (const auto &pc : c->children) {
-                    if (pc->is_type<g::identifier_list>())
-                        for (const auto &id : pc->children)
-                            names.push_back(content_of(*id));
-                    else if (pc->is_type<g::type_spec>())
-                        ty = content_of(*pc);
-                }
-                for (const auto &nm : names) {
-                    auto p = mk<ast::Parameter>();
-                    p->name = nm;
-                    if (!ty.empty()) p->typeName = ty;
-                    f.params.push_back(std::move(p));
-                }
-            } else if (c->is_type<g::type_spec>()) {
-                f.returnTypeName = content_of(*c);
+    // Append a Parameter per name found in the `param` children of `container`
+    // (param = identifier_list ':' type_spec). Shared by func/method/ctor/op/enum-variant.
+    static void collect_params(const Node &container,
+                               std::vector<std::unique_ptr<ast::Parameter>> &out) {
+        for (const auto &c : container.children) {
+            if (!c->is_type<g::param>()) continue;
+            std::string ty;
+            std::vector<std::string> names;
+            for (const auto &pc : c->children) {
+                if (pc->is_type<g::identifier_list>())
+                    for (const auto &id : pc->children) names.push_back(content_of(*id));
+                else if (pc->is_type<g::type_spec>())
+                    ty = content_of(*pc);
+            }
+            for (const auto &nm : names) {
+                auto p = mk<ast::Parameter>();
+                p->name = nm;
+                if (!ty.empty()) p->typeName = ty;
+                out.push_back(std::move(p));
             }
         }
+    }
+
+    // Fill params + (a func_sig's direct) return type.
+    static void parse_params(const Node &sig,
+                             std::vector<std::unique_ptr<ast::Parameter>> &params,
+                             std::optional<std::string> &retType) {
+        collect_params(sig, params);
+        for (const auto &c : sig.children)
+            if (c->is_type<g::type_spec>()) retType = content_of(*c);
     }
 
     static std::unique_ptr<ast::MXASTNode> to_func_def(const Node &n) {
         auto f = mk<ast::FunctionDef>();
         for (const auto &c : n.children) {
-            if (c->is_type<g::identifier>() && f->name.empty())
-                f->name = content_of(*c);
-            else if (c->is_type<g::func_sig>())
-                parse_sig(*c, *f);
-            else if (c->is_type<g::block>())
-                f->body = to_block(*c);
+            if (c->is_type<g::identifier>() && f->name.empty()) f->name = content_of(*c);
+            else if (c->is_type<g::func_sig>()) parse_params(*c, f->params, f->returnTypeName);
+            else if (c->is_type<g::block>()) f->body = to_block(*c);
         }
         return f;
     }
 
+    // A class member: field / method / constructor / destructor / operator, or a
+    // `static` wrapper around a method/field.
+    static std::unique_ptr<ast::MXASTNode> to_member(const Node &n, bool isStatic) {
+        if (n.is_type<g::static_member>()) {
+            for (const auto &c : n.children)
+                if (!c->is_type<g::K_STATIC>()) return to_member(*c, true);
+            return nullptr;
+        }
+        if (n.is_type<g::field_def_class>()) {
+            auto f = mk<ast::FieldDecl>();
+            f->isStatic = isStatic;
+            for (const auto &c : n.children) {
+                if (c->is_type<g::K_MUT>()) f->isMut = true;
+                else if (c->is_type<g::identifier_list>())
+                    for (const auto &id : c->children) f->names.push_back(content_of(*id));
+                else if (c->is_type<g::type_spec>()) f->typeName = content_of(*c);
+                else f->value = to_expr(*c);
+            }
+            return f;
+        }
+        if (n.is_type<g::method_def>()) {
+            auto m = mk<ast::MethodDef>();
+            m->isStatic = isStatic;
+            for (const auto &c : n.children) {
+                if (c->is_type<g::K_OVERRIDE>()) m->isOverride = true;
+                else if (c->is_type<g::identifier>() && m->name.empty())
+                    m->name = content_of(*c);
+                else if (c->is_type<g::func_sig>())
+                    parse_params(*c, m->params, m->returnTypeName);
+                else if (c->is_type<g::block>()) m->body = to_block(*c);
+            }
+            return m;
+        }
+        if (n.is_type<g::constructor_def>()) {
+            auto k = mk<ast::ConstructorDef>();
+            bool sawSig = false;
+            for (const auto &c : n.children) {
+                if (c->is_type<g::func_sig>()) {
+                    std::optional<std::string> rt;
+                    parse_params(*c, k->params, rt);
+                    sawSig = true;
+                } else if (c->is_type<g::identifier>() && sawSig && !k->baseName) {
+                    k->baseName = content_of(*c);// base-class ctor name (after the signature)
+                } else if (c->is_type<g::block>()) {
+                    k->body = to_block(*c);
+                }
+            }
+            return k;
+        }
+        if (n.is_type<g::destructor_def>()) {
+            auto d = mk<ast::DestructorDef>();
+            for (const auto &c : n.children)
+                if (c->is_type<g::block>()) d->body = to_block(*c);
+            return d;
+        }
+        if (n.is_type<g::operator_def>()) {
+            auto o = mk<ast::OperatorDef>();
+            for (const auto &c : n.children) {
+                if (c->is_type<g::K_OVERRIDE>()) o->isOverride = true;
+                else if (c->is_type<g::op_symbol>()) o->op = content_of(*c);
+                else if (c->is_type<g::func_sig>())
+                    parse_params(*c, o->params, o->returnTypeName);
+                else if (c->is_type<g::block>()) o->body = to_block(*c);
+            }
+            return o;
+        }
+        return nullptr;// access_spec and anything else
+    }
+
+    static std::unique_ptr<ast::MXASTNode> to_class(const Node &n) {
+        auto c = mk<ast::ClassDef>();
+        for (const auto &ch : n.children) {
+            if (ch->is_type<g::identifier>() && c->name.empty()) c->name = content_of(*ch);
+            else if (ch->is_type<g::type_spec>() && !c->baseType)
+                c->baseType = content_of(*ch);
+            else if (auto m = to_member(*ch, false)) c->members.push_back(std::move(m));
+        }
+        return c;
+    }
+
+    static std::unique_ptr<ast::MXASTNode> to_interface(const Node &n) {
+        auto i = mk<ast::InterfaceDef>();
+        for (const auto &ch : n.children) {
+            if (ch->is_type<g::identifier>() && i->name.empty()) i->name = content_of(*ch);
+            else if (ch->is_type<g::type_spec>() && !i->baseType)
+                i->baseType = content_of(*ch);
+            else if (ch->is_type<g::interface_member>()) {
+                auto m = mk<ast::InterfaceMethod>();
+                for (const auto &c : ch->children) {
+                    if (c->is_type<g::identifier>() && m->name.empty())
+                        m->name = content_of(*c);
+                    else if (c->is_type<g::func_sig>())
+                        parse_params(*c, m->params, m->returnTypeName);
+                    else if (c->is_type<g::block>()) m->body = to_block(*c);
+                }
+                i->methods.push_back(std::move(m));
+            }
+        }
+        return i;
+    }
+
+    static std::unique_ptr<ast::MXASTNode> to_enum(const Node &n) {
+        auto e = mk<ast::EnumDef>();
+        for (const auto &ch : n.children) {
+            if (ch->is_type<g::identifier>() && e->name.empty()) e->name = content_of(*ch);
+            else if (ch->is_type<g::enum_variant>()) {
+                auto v = mk<ast::EnumVariant>();
+                for (const auto &c : ch->children)
+                    if (c->is_type<g::identifier>() && v->name.empty())
+                        v->name = content_of(*c);
+                collect_params(*ch, v->fields);
+                e->variants.push_back(std::move(v));
+            }
+        }
+        return e;
+    }
+
+    static std::unique_ptr<ast::MXASTNode> to_typedef(const Node &n) {
+        auto t = mk<ast::TypeDef>();
+        for (const auto &ch : n.children) {
+            if (ch->is_type<g::identifier>() && t->name.empty()) t->name = content_of(*ch);
+            else if (ch->is_type<g::field_decl>()) {
+                auto f = mk<ast::TypeField>();
+                for (const auto &c : ch->children) {
+                    if (c->is_type<g::identifier_list>())
+                        for (const auto &id : c->children) f->names.push_back(content_of(*id));
+                    else if (c->is_type<g::type_spec>()) f->typeName = content_of(*c);
+                }
+                t->fields.push_back(std::move(f));
+            }
+        }
+        return t;
+    }
+
     static std::unique_ptr<ast::MXASTNode> to_stmt(const Node &n) {
         if (n.is_type<g::func_def>()) return to_func_def(n);
+        if (n.is_type<g::class_def>()) return to_class(n);
+        if (n.is_type<g::interface_def>()) return to_interface(n);
+        if (n.is_type<g::enum_def>()) return to_enum(n);
+        if (n.is_type<g::type_def>()) return to_typedef(n);
         if (n.is_type<g::let_stmt>()) return to_let(n);
         if (n.is_type<g::return_stmt>()) {
             auto s = mk<ast::ReturnStatement>();
@@ -335,6 +483,77 @@ namespace mxs::frontend::parser {
             pad(os, depth);
             os << "Param " << p->name;
             if (p->typeName) os << ": " << *p->typeName;
+            os << "\n";
+        } else if (auto *cd = dynamic_cast<const ast::ClassDef *>(node)) {
+            pad(os, depth);
+            os << "Class " << cd->name;
+            if (cd->baseType) os << " : " << *cd->baseType;
+            os << "\n";
+            for (const auto &m : cd->members) dump(m.get(), os, depth + 1);
+        } else if (auto *fd = dynamic_cast<const ast::FieldDecl *>(node)) {
+            pad(os, depth);
+            os << "Field" << (fd->isStatic ? " static" : "") << (fd->isMut ? " mut" : "");
+            for (const auto &nm : fd->names) os << " " << nm;
+            if (fd->typeName) os << ": " << *fd->typeName;
+            os << "\n";
+            if (fd->value) dump(fd->value.get(), os, depth + 1);
+        } else if (auto *md = dynamic_cast<const ast::MethodDef *>(node)) {
+            pad(os, depth);
+            os << "Method" << (md->isStatic ? " static" : "")
+               << (md->isOverride ? " override" : "") << " " << md->name;
+            if (md->returnTypeName) os << " -> " << *md->returnTypeName;
+            os << "\n";
+            for (const auto &p : md->params) dump(p.get(), os, depth + 1);
+            if (md->body) dump(md->body.get(), os, depth + 1);
+        } else if (auto *ct = dynamic_cast<const ast::ConstructorDef *>(node)) {
+            pad(os, depth);
+            os << "Constructor";
+            if (ct->baseName) os << " : " << *ct->baseName;
+            os << "\n";
+            for (const auto &p : ct->params) dump(p.get(), os, depth + 1);
+            if (ct->body) dump(ct->body.get(), os, depth + 1);
+        } else if (auto *dt = dynamic_cast<const ast::DestructorDef *>(node)) {
+            pad(os, depth);
+            os << "Destructor\n";
+            if (dt->body) dump(dt->body.get(), os, depth + 1);
+        } else if (auto *opd = dynamic_cast<const ast::OperatorDef *>(node)) {
+            pad(os, depth);
+            os << "Operator" << (opd->isOverride ? " override" : "") << " '" << opd->op
+               << "'";
+            if (opd->returnTypeName) os << " -> " << *opd->returnTypeName;
+            os << "\n";
+            for (const auto &p : opd->params) dump(p.get(), os, depth + 1);
+            if (opd->body) dump(opd->body.get(), os, depth + 1);
+        } else if (auto *itf = dynamic_cast<const ast::InterfaceDef *>(node)) {
+            pad(os, depth);
+            os << "Interface " << itf->name;
+            if (itf->baseType) os << " : " << *itf->baseType;
+            os << "\n";
+            for (const auto &m : itf->methods) dump(m.get(), os, depth + 1);
+        } else if (auto *im = dynamic_cast<const ast::InterfaceMethod *>(node)) {
+            pad(os, depth);
+            os << "IMethod " << im->name;
+            if (im->returnTypeName) os << " -> " << *im->returnTypeName;
+            os << (im->body ? " (default)" : "") << "\n";
+            for (const auto &p : im->params) dump(p.get(), os, depth + 1);
+            if (im->body) dump(im->body.get(), os, depth + 1);
+        } else if (auto *en = dynamic_cast<const ast::EnumDef *>(node)) {
+            pad(os, depth);
+            os << "Enum " << en->name << "\n";
+            for (const auto &v : en->variants) dump(v.get(), os, depth + 1);
+        } else if (auto *ev = dynamic_cast<const ast::EnumVariant *>(node)) {
+            pad(os, depth);
+            os << "Variant " << ev->name << "\n";
+            for (const auto &p : ev->fields) dump(p.get(), os, depth + 1);
+        } else if (auto *tdf = dynamic_cast<const ast::TypeDef *>(node)) {
+            pad(os, depth);
+            os << "Type " << tdf->name << "\n";
+            for (const auto &f : tdf->fields) dump(f.get(), os, depth + 1);
+        } else if (auto *tf = dynamic_cast<const ast::TypeField *>(node)) {
+            pad(os, depth);
+            os << "TypeField";
+            for (const auto &nm : tf->names) os << " " << nm;
+            if (tf->typeName) os << ": " << *tf->typeName;
             os << "\n";
         } else if (auto *b = dynamic_cast<const ast::Block *>(node)) {
             pad(os, depth);

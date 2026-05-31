@@ -1,6 +1,7 @@
 build/
 bin/
 .DS_Store
+others/
 lib/
 *.so
 *.exe

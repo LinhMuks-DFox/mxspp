@@ -176,6 +176,120 @@ namespace mxs::frontend {
         };
 
         // ============================
+        // OOP: definitions and members
+        // ============================
+        // A class field (or @@POD-style member). isStatic set for `static let`.
+        class FieldDecl : public virtual Statement {
+        public:
+            FieldDecl() : core::MXObject(false), MXASTNode(false) { }
+            std::vector<std::string> names;
+            std::optional<std::string> typeName;
+            std::unique_ptr<Expression> value;
+            bool isMut = false;
+            bool isStatic = false;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class MethodDef : public virtual Statement {
+        public:
+            MethodDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::vector<std::unique_ptr<Parameter>> params;
+            std::optional<std::string> returnTypeName;
+            std::unique_ptr<Block> body;
+            bool isOverride = false;
+            bool isStatic = false;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class ConstructorDef : public virtual Statement {
+        public:
+            ConstructorDef() : core::MXObject(false), MXASTNode(false) { }
+            std::vector<std::unique_ptr<Parameter>> params;
+            std::optional<std::string> baseName;// base-class ctor invoked, if any
+            std::unique_ptr<Block> body;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class DestructorDef : public virtual Statement {
+        public:
+            DestructorDef() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Block> body;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class OperatorDef : public virtual Statement {
+        public:
+            OperatorDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string op;
+            std::vector<std::unique_ptr<Parameter>> params;
+            std::optional<std::string> returnTypeName;
+            std::unique_ptr<Block> body;
+            bool isOverride = false;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        class ClassDef : public virtual Statement {
+        public:
+            ClassDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::optional<std::string> baseType;
+            std::vector<std::unique_ptr<MXASTNode>> members;// FieldDecl/Method/Ctor/Dtor/Operator
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // An interface method (signature, with an optional default body). Not a Statement.
+        class InterfaceMethod : public virtual MXASTNode {
+        public:
+            InterfaceMethod() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::vector<std::unique_ptr<Parameter>> params;
+            std::optional<std::string> returnTypeName;
+            std::unique_ptr<Block> body;
+        };
+
+        class InterfaceDef : public virtual Statement {
+        public:
+            InterfaceDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::optional<std::string> baseType;
+            std::vector<std::unique_ptr<InterfaceMethod>> methods;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // An enum variant, optionally carrying typed fields. Not a Statement.
+        class EnumVariant : public virtual MXASTNode {
+        public:
+            EnumVariant() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::vector<std::unique_ptr<Parameter>> fields;
+        };
+
+        class EnumDef : public virtual Statement {
+        public:
+            EnumDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::vector<std::unique_ptr<EnumVariant>> variants;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // A plain-struct (`type`) field. Not a Statement.
+        class TypeField : public virtual MXASTNode {
+        public:
+            TypeField() : core::MXObject(false), MXASTNode(false) { }
+            std::vector<std::string> names;
+            std::optional<std::string> typeName;
+        };
+
+        class TypeDef : public virtual Statement {
+        public:
+            TypeDef() : core::MXObject(false), MXASTNode(false) { }
+            std::string name;
+            std::vector<std::unique_ptr<TypeField>> fields;
+            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // ============================
         // Expression Nodes
         // ============================
         class Identifier : public virtual Expression {

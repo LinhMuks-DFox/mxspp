@@ -54,7 +54,8 @@ and is the prerequisite for semantic analysis + codegen.
 - [~] [task02 — unit-test harness + frontend suite](tasks/task02-unit-test-harness.md) — harness + suite done; 100% gate + CI wiring pending
 - [x] [task03 — AST coverage: control flow](tasks/task03-ast-control-flow.md) — done 2026-05-31
       (if/for-in/loop/until/do-until/break/continue/assert/defer + range; member/index/`?` → task04)
-- [ ] task04 — AST coverage: OOP (class / interface / `type` / enum + all members) + capture generics
+- [x] [task04 — AST coverage: OOP definitions](tasks/task04-ast-oop.md) — done 2026-05-31
+      (class/interface/enum/type + members; postfix `.`/`[]`/`?` + visibility/generics-capture deferred)
 - [ ] task05 — AST coverage: match (+ patterns) + lambda + annotations (incl. `@@foreign` metadata) +
       import / static-dynamic binding
 - [ ] task06 — grammar extensions G1–G8 (container literals/types, tuple, array type, type-binding
@@ -88,3 +89,10 @@ and is the prerequisite for semantic analysis + codegen.
   Defer nodes; wired selector + to_stmt + dumper + 3 tests. Suite 16 cases / 90 checks, all green.
   Verified a recursive `fib` produces a correct AST. Next: task04 (OOP) — class/interface/enum/type
   + members, plus member/index/`?` postfix.
+- 2026-05-31 [ai] Did task04 (OOP definitions). Mapped exact parse-tree shapes empirically, then
+  added 12 AST nodes (ClassDef/FieldDecl/Method/Ctor/Dtor/Operator/Interface(+Method)/Enum(+Variant)/
+  Type(+Field)) + transforms + dumper + 5 tests. Suite 21 cases / 115 checks, all green.
+  universal_test.mxs now dumps a complete top-level AST. Committed checkpoint ada6f77 earlier (task01-03);
+  task04 not yet committed. Deferred: postfix `.`/`[]`/`?` (needs grammar sub-rules — highest-value
+  next), visibility, generic-param capture. Next: task05 (match/lambda/annotations/import) or the
+  postfix grammar tweak.

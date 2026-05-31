@@ -223,4 +223,55 @@ MX_TEST(ast_control_flow_assert_defer) {
     CHECK(has(dump("func f()->nil{ defer { cleanup(); } }"), "Defer"));
 }
 
+MX_TEST(ast_class_members) {
+    const auto d = dump(
+            "class Dog : Animal { public: let name: string; let mut age: int;"
+            " Dog(n: string) : Animal(n) { } ~Dog() { }"
+            " override func speak() -> string { return \"w\"; }"
+            " operator+(o: Dog) -> Dog { return o; }"
+            " static func make() -> Dog { return self; } private: let secret: int; }");
+    CHECK(has(d, "Class Dog : Animal"));
+    CHECK(has(d, "Field name: string"));
+    CHECK(has(d, "Field mut age: int"));
+    CHECK(has(d, "Constructor : Animal"));
+    CHECK(has(d, "Destructor"));
+    CHECK(has(d, "Method override speak -> string"));
+    CHECK(has(d, "Operator '+' -> Dog"));
+    CHECK(has(d, "Method static make -> Dog"));
+    CHECK(has(d, "Field secret: int"));
+}
+
+MX_TEST(ast_interface) {
+    const auto d =
+            dump("interface I : Base { func a() -> nil; func b() -> float { return 0.0; }; }");
+    CHECK(has(d, "Interface I : Base"));
+    CHECK(has(d, "IMethod a -> nil"));
+    CHECK(has(d, "IMethod b -> float (default)"));
+}
+
+MX_TEST(ast_enum) {
+    const auto d = dump("enum Shape { Dot, Circle(radius: int), Rect(w, h: int) }");
+    CHECK(has(d, "Enum Shape"));
+    CHECK(has(d, "Variant Dot"));
+    CHECK(has(d, "Variant Circle"));
+    CHECK(has(d, "Param radius: int"));
+    CHECK(has(d, "Variant Rect"));
+    CHECK(has(d, "Param w: int"));
+    CHECK(has(d, "Param h: int"));
+}
+
+MX_TEST(ast_type_struct) {
+    const auto d = dump("type Point { x: int; y: int; }");
+    CHECK(has(d, "Type Point"));
+    CHECK(has(d, "TypeField x: int"));
+    CHECK(has(d, "TypeField y: int"));
+}
+
+MX_TEST(ast_generic_class) {
+    const auto d = dump("class Box<T> { public: let v: T; func get() -> T { return self; } }");
+    CHECK(has(d, "Class Box"));
+    CHECK(has(d, "Field v: T"));
+    CHECK(has(d, "Method get -> T"));
+}
+
 int main() { return mxtest::run_all(); }
