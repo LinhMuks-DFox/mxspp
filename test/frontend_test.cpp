@@ -64,7 +64,7 @@ MX_TEST(parse_accept_matrix) {
         { "func f()->nil{ let x=a.b.c; let y=a[0]; g(1,2); }", true },
         { "func f()->nil{ let x=g()?; let z=g<int>(1); }", true },
         { "func f()->nil{ let s=(x:int)->int=>x; }", true },
-        { "func f()->nil{ let a=[1,2,3]; }", false },// G1 list literal
+        { "func f()->nil{ let a=[1,2,3]; }", true },// G1 list literal (now supported)
         { "func f()->nil{ let a=(1,2); }", false },// G1 tuple literal
         // types
         { "func f()->nil{ let x: List<int>; }", true },

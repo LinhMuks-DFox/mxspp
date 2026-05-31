@@ -569,6 +569,7 @@ namespace mxs::backend::codegen {
             if (op == "+") return "mxs_op_add";
             if (op == "-") return "mxs_op_sub";
             if (op == "*") return "mxs_op_mul";
+            if (op == "**") return "mxs_op_pow";
             if (op == "/") return "mxs_op_div";
             if (op == "%") return "mxs_op_mod";
             if (op == "<") return "mxs_op_lt";
@@ -708,6 +709,23 @@ namespace mxs::backend::codegen {
             if (const auto *sl = dynamic_cast<const ast::StringLiteral *>(n))
                 return B.CreateCall(rt("mxs_str_new", ptr, { ptr }),
                                     { B.CreateGlobalStringPtr(sl->value, "str") });
+            if (const auto *ll = dynamic_cast<const ast::ListLiteral *>(n)) {
+                llvm::Value *list =
+                        B.CreateCall(rt("mxs_arraylist_new", ptr, {}), {}, "list");
+                auto *appendFn = rt("mxs_arraylist_append", voidTy, { ptr, ptr });
+                for (const auto &el : ll->elements) {
+                    llvm::Value *v = expr(el.get());
+                    if (!v) return nullptr;
+                    B.CreateCall(appendFn, { list, v });
+                }
+                return list;
+            }
+            if (const auto *ix = dynamic_cast<const ast::IndexExpr *>(n)) {
+                llvm::Value *t = expr(ix->target.get());
+                llvm::Value *i = expr(ix->index.get());
+                if (!t || !i) return nullptr;
+                return B.CreateCall(rt("mxs_arraylist_get", ptr, { ptr, ptr }), { t, i });
+            }
             if (const auto *id = dynamic_cast<const ast::Identifier *>(n)) {
                 auto it = locals.find(id->name);
                 if (it == locals.end()) {

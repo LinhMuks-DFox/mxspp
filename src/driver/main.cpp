@@ -50,8 +50,11 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
     // family binds via generic @@foreign to the polymorphic print over MXObject::repr() (defined
     // in core.bc). No per-function hardcoding (D3).
     constexpr const char *kCorePrelude = R"MXS(
-@@foreign(symbol_name="mxs_println_object") func println(x: any) -> nil;
-@@foreign(symbol_name="mxs_print_object")   func print(x: any) -> nil;
+@@foreign(symbol_name="mxs_println_object")   func println(x: any) -> nil;
+@@foreign(symbol_name="mxs_print_object")     func print(x: any) -> nil;
+@@foreign(symbol_name="mxs_arraylist_len")    func len(xs: any) -> any;
+@@foreign(symbol_name="mxs_arraylist_append") func append(xs: any, v: any) -> nil;
+@@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
 )MXS";
 
     std::string read_file(const std::string &path, bool &ok) {

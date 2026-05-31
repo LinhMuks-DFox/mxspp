@@ -144,20 +144,23 @@ namespace mxs::frontend::grammar {
     struct match_expr;
     struct raise_expr;
     struct lambda_expr;
+    struct list_literal;// `[a, b, c]` — ArrayList literal (defined after `expression`)
 
     struct primary_expr
-        : pegtl::sor<literal,
+        : pegtl::sor<literal, list_literal,
                      pegtl::seq<pegtl::one<'('>, ignored, expression, ignored,
                                 pegtl::one<')'>>,
                      block_expr, match_expr, raise_expr, lambda_expr,
                      identifier// Must be last to avoid greedily matching keywords
                      > { };
 
+    // Subscript `[expr]` is a named postfix op so the parser can build an index expression.
+    struct index_op
+        : pegtl::seq<pegtl::one<'['>, ignored, expression, ignored, pegtl::one<']'>> { };
     struct postfix_op
         : pegtl::sor<pegtl::seq<ignored, pegtl::one<'.'>, ignored, identifier>,
-                     pegtl::seq<ignored, pegtl::one<'['>, ignored, expression, ignored,
-                                pegtl::one<']'>>,
-                     pegtl::seq<ignored, generic_inst>, pegtl::seq<ignored, call_args>,
+                     pegtl::seq<ignored, index_op>, pegtl::seq<ignored, generic_inst>,
+                     pegtl::seq<ignored, call_args>,
                      pegtl::seq<ignored, pegtl::one<'?'>>> { };
 
     struct postfix_expr : pegtl::seq<primary_expr, pegtl::star<postfix_op>> { };
@@ -166,10 +169,16 @@ namespace mxs::frontend::grammar {
     struct unary_expr
         : pegtl::sor<pegtl::seq<unary_op, ignored, postfix_expr>, postfix_expr> { };
 
+    // Power `**` binds tighter than * / % (between unary and multiplicative). `**` must precede
+    // `*` so the two-character operator is matched first.
+    struct power_op : pegtl::string<'*', '*'> { };
+    struct power_expr : pegtl::list<unary_expr, pegtl::seq<ignored, power_op, ignored>> {
+    };
+
     struct multiplicative_op
         : pegtl::sor<pegtl::one<'*'>, pegtl::one<'/'>, pegtl::one<'%'>> { };
     struct multiplicative_expr
-        : pegtl::list<unary_expr, pegtl::seq<ignored, multiplicative_op, ignored>> { };
+        : pegtl::list<power_expr, pegtl::seq<ignored, multiplicative_op, ignored>> { };
 
     struct additive_op : pegtl::sor<pegtl::one<'+'>, pegtl::one<'-'>> { };
     struct additive_expr
@@ -217,6 +226,13 @@ namespace mxs::frontend::grammar {
                   expression> { };
     struct call_args : pegtl::seq<pegtl::one<'('>, ignored, pegtl::opt<arg_list>, ignored,
                                   pegtl::one<')'>> { };
+
+    // ArrayList literal: `[a, b, c]` (or empty `[]`). A primary expression; the subscript
+    // form `xs[i]` is a postfix_op (index_op), disambiguated by position.
+    struct list_elems
+        : pegtl::list<expression, pegtl::seq<ignored, pegtl::one<','>, ignored>> { };
+    struct list_literal : pegtl::seq<pegtl::one<'['>, ignored, pegtl::opt<list_elems>,
+                                     ignored, pegtl::one<']'>> { };
 
     struct raise_expr : pegtl::seq<K_RAISE, ignored, expression> { };
     struct lambda_expr : pegtl::seq<func_sig, ignored, pegtl::string<'=', '>'>, ignored,

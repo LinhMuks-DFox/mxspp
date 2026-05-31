@@ -62,8 +62,17 @@ object model from [progress05](./progress05-runtime-and-stdlib.md): every contai
   out-of-range → `MXError`. Unit-tested (core_test). Still pending (needs codegen rewiring,
   progress09 ④): the `[...]` literal grammar + subscript `xs[i]` lowering to this ABI.
 
+## ArrayList usable from the language (2026-05-31)
+On the new object model (run-core): the list **literal** `[a, b, c]` (grammar + `ListLiteral` AST +
+codegen → `mxs_arraylist_new`/`append`), **subscript** `xs[i]` (named `index_op` postfix +
+`IndexExpr` AST + codegen → `mxs_arraylist_get`, out-of-range → `MXError`), and `len`/`append`
+builtins (object-mode prelude). Also added the **`**` power operator** (grammar power level +
+`mxs_op_pow`). Verified (`example/examples/core_list.mxs`): `2 ** 10`→1024, `[10,20,30]`,
+`xs[1]`→20, `len(xs)`→3, `append` then `[10,20,30,40]`/4.
+
 ## Open / TODO
-- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics.
+- `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics; subscript
+  assignment `xs[i] = v`; iteration `for x in xs`.
 - Static `Array` (POD vs boxed), `Tuple`, `Dict`. Then `Matrix` (after classes/methods).
 - Method-call syntax (`xs.append(v)`, `xs.length()`) once OOP dispatch lands; reconcile element rc.
 

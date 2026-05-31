@@ -199,6 +199,14 @@ namespace mxs::frontend::ast {
         std::cerr << "codegen: match requires object mode (mxs run-core)\n";
         return nullptr;
     }
+    llvm::Value *ListLiteral::codegen(CodegenContext &) const {
+        std::cerr << "codegen: list literals require object mode (mxs run-core)\n";
+        return nullptr;
+    }
+    llvm::Value *IndexExpr::codegen(CodegenContext &) const {
+        std::cerr << "codegen: subscript requires object mode (mxs run-core)\n";
+        return nullptr;
+    }
 
     // ===================== Statements =====================
     void Block::codegen(CodegenContext &ctx) const {

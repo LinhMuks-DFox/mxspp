@@ -110,6 +110,12 @@ MXObject *mxs_op_mod(MXObject *a, MXObject *b) {
     }
     return type_err("%");
 }
+MXObject *mxs_op_pow(MXObject *a, MXObject *b) {
+    if (const auto *ia = as<MXInteger>(a))
+        if (const auto *ib = as<MXInteger>(b)) return ia->pow(*ib).release();
+    if (is_num(a) && is_num(b)) return new MXFloat(std::pow(to_d(a), to_d(b)));
+    return type_err("**");
+}
 MXObject *mxs_op_neg(MXObject *a) {
     if (const auto *ia = as<MXInteger>(a)) return ia->neg().release();
     if (const auto *fa = as<MXFloat>(a)) return new MXFloat(-fa->value());

@@ -76,7 +76,7 @@ namespace mxs::frontend::parser {
                                   g::type_spec, g::op_symbol, g::unary_op,
                                   g::multiplicative_op, g::additive_op, g::range_op,
                                   g::relational_op, g::equality_op, g::logic_and_op,
-                                  g::logic_or_op, g::assign_op>,
+                                  g::logic_or_op, g::assign_op, g::power_op>,
             pt::remove_content::on<
                     g::K_MUT, g::K_OVERRIDE, g::K_STATIC, g::identifier_list, g::let_stmt,
                     g::return_stmt, g::expression_stmt, g::block, g::if_stmt,
@@ -87,13 +87,14 @@ namespace mxs::frontend::parser {
                     g::method_def, g::operator_def, g::static_member, g::interface_def,
                     g::interface_member, g::enum_def, g::enum_variant, g::type_def,
                     g::field_decl, g::annotation, g::annotation_arg, g::match_expr,
-                    g::case_clause, g::bind_pattern, g::wildcard_pattern, g::block_expr>,
+                    g::case_clause, g::bind_pattern, g::wildcard_pattern, g::block_expr,
+                    g::list_literal, g::index_op>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
-            rearrange::on<g::multiplicative_expr, g::additive_expr, g::range_expr,
-                          g::relational_expr, g::equality_expr, g::logic_and_expr,
-                          g::logic_or_expr, g::expression>,
+            rearrange::on<g::power_expr, g::multiplicative_expr, g::additive_expr,
+                          g::range_expr, g::relational_expr, g::equality_expr,
+                          g::logic_and_expr, g::logic_or_expr, g::expression>,
             pt::fold_one::on<g::unary_expr, g::postfix_expr>>;
 
     // ===================================================================
@@ -117,10 +118,11 @@ namespace mxs::frontend::parser {
     }
 
     static bool is_binop(const Node &n) {
-        return n.is_type<g::multiplicative_op>() || n.is_type<g::additive_op>() ||
-               n.is_type<g::range_op>() || n.is_type<g::relational_op>() ||
-               n.is_type<g::equality_op>() || n.is_type<g::logic_and_op>() ||
-               n.is_type<g::logic_or_op>() || n.is_type<g::assign_op>();
+        return n.is_type<g::power_op>() || n.is_type<g::multiplicative_op>() ||
+               n.is_type<g::additive_op>() || n.is_type<g::range_op>() ||
+               n.is_type<g::relational_op>() || n.is_type<g::equality_op>() ||
+               n.is_type<g::logic_and_op>() || n.is_type<g::logic_or_op>() ||
+               n.is_type<g::assign_op>();
     }
 
     static std::unique_ptr<ast::Expression> to_expr(const Node &n);
@@ -128,16 +130,28 @@ namespace mxs::frontend::parser {
     static std::unique_ptr<ast::MXASTNode> to_stmt(const Node &n);
 
     static std::unique_ptr<ast::Expression> to_postfix(const Node &n) {
-        // postfix_expr kept only when it has >1 child, e.g. callee + call_args.
-        auto call = mk<ast::FunctionCall>();
-        if (!n.children.empty() && n.children[0]->is_type<g::identifier>())
-            call->name = content_of(*n.children[0]);
+        // postfix_expr kept only when it has >1 child: a primary followed by postfix ops
+        // (call_args -> a named call; index_op -> a subscript). Built left-to-right so chains
+        // like f(a)[i] compose.
+        if (n.children.empty()) return mk<ast::Identifier>();
+        std::unique_ptr<ast::Expression> base = to_expr(*n.children[0]);
         for (std::size_t i = 1; i < n.children.size(); ++i) {
             const Node &c = *n.children[i];
-            if (c.is_type<g::call_args>())
+            if (c.is_type<g::call_args>()) {
+                auto call = mk<ast::FunctionCall>();
+                if (auto *id = dynamic_cast<ast::Identifier *>(base.get()))
+                    call->name = id->name;
                 for (const auto &a : c.children) call->args.push_back(to_expr(*a));
+                base = std::move(call);
+            } else if (c.is_type<g::index_op>()) {
+                auto idx = mk<ast::IndexExpr>();
+                idx->target = std::move(base);
+                idx->index = to_expr(*c.children[0]);
+                base = std::move(idx);
+            }
+            // member access (.id) / generic_inst / `?` are not lowered yet.
         }
-        return call;
+        return base;
     }
 
     static std::unique_ptr<ast::Expression> to_expr(const Node &n) {
@@ -159,6 +173,11 @@ namespace mxs::frontend::parser {
             return e;
         }
         if (n.is_type<g::nil_literal>()) return mk<ast::NilLiteral>();
+        if (n.is_type<g::list_literal>()) {
+            auto e = mk<ast::ListLiteral>();
+            for (const auto &c : n.children) e->elements.push_back(to_expr(*c));
+            return e;
+        }
         if (n.is_type<g::match_expr>()) {
             auto m = mk<ast::MatchExpr>();
             for (const auto &c : n.children) {

@@ -1,0 +1,13 @@
+# Power operator, list literals, subscript and len/append on the real object model (run-core).
+# Expected: 1024 / [10, 20, 30] / 20 / 3 / [10, 20, 30, 40] / 4
+func main() -> int {
+    println(2 ** 10);          # 1024
+    let xs = [10, 20, 30];
+    println(xs);               # [10, 20, 30]
+    println(xs[1]);            # 20
+    println(len(xs));          # 3
+    append(xs, 40);
+    println(xs);               # [10, 20, 30, 40]
+    println(len(xs));          # 4
+    return 0;
+}

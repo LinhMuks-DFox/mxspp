@@ -376,6 +376,25 @@ namespace mxs::frontend {
             codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
+        // An ArrayList literal: `[a, b, c]` (docs §3.3). Object-mode only.
+        class ListLiteral : public virtual Expression {
+        public:
+            ListLiteral() : core::MXObject(false), MXASTNode(false) { }
+            std::vector<std::unique_ptr<Expression>> elements;
+            llvm::Value *
+            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // A subscript: `target[index]` (e.g. ArrayList element access). Object-mode only.
+        class IndexExpr : public virtual Expression {
+        public:
+            IndexExpr() : core::MXObject(false), MXASTNode(false) { }
+            std::unique_ptr<Expression> target;
+            std::unique_ptr<Expression> index;
+            llvm::Value *
+            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
         class MatchStatement : public virtual Statement {
         public:
             MatchStatement() : core::MXObject(false), MXASTNode(false) { }
