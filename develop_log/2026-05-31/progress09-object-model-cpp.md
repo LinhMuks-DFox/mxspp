@@ -187,12 +187,38 @@ ctor params, run body, return self); handle **member-assignment** `self.field = 
 self.x=x; self.y=y; } let x:int; let y:int; }` then `Point(3,4).x` → 3. **Methods (`obj.method(args)`)
 are NOT in this slice** — they need the method-dispatch design (below).
 
-**OPEN DECISION (Mux) — OOP method dispatch:** how `obj.method(args)` resolves on the runtime
-type — vtable (instance header → per-class method table; needs instance layout + inheritance table
-merge) vs. name-based registry (`(class,method)→fn`, uniform `fn(self, argsList)` signature; easy
-dynamic/inheritance, one lookup per call) vs. inline cache. Also: inheritance (v1?), `operator`
-overload (matrix_class.mxs uses `operator+`), `static` members. Data classes (above) need none of
-this and can land first.
+**DECISION (Mux, 2026-05-31) — OOP method dispatch = vtable** (not a name-keyed registry).
+Rationale: vtables are emitted as **LLVM constant globals**, so when the receiver's runtime type is
+statically determinable at the call site (e.g. right after a constructor that LLVM inlines), the
+chain `load self->classinfo → load classinfo->vtable → load vtable[slot]` folds through the
+constants to the concrete function → direct call + cross-boundary inline (the D6 win). A name-keyed
+registry's table is built at runtime and is opaque to LLVM — it never folds. Truly-dynamic call
+sites (unknown receiver, e.g. a mixed-type list) still pay 2 loads + an indirect call (the cheapest
+dynamic dispatch); anything hotter is expected to be rewritten in C++ behind `@@foreign` — Mux:
+dispatch speed is not where we optimize, hot methods go foreign.
+
+Type-descriptor design (Mux delegated this to AI; recorded here for review):
+- Per class, two **constant globals**: an `MXClassInfo {name, parent (nullable), vtable*}` and the
+  `vtable` itself — an array of fn-ptrs indexed by a **whole-program global selector slot** (feasible
+  because `compile_core` sees the whole program). Unimplemented slots point at a `mxs_no_such_method`
+  thunk. Const globals are what let LLVM fold dispatch when the type is known.
+- `MXInstance` carries a `const MXClassInfo*` (set in the constructor) instead of just the class-name
+  string; `type_of`/`is_instance` read it.
+- A small **reserved low slot range** is fixed for the builtin operators / `Object` virtuals
+  (`operator+`, …, `repr`/`hash`/`op_from`), shared between codegen and `core.bc` via a constants
+  header (the stable D3/D7 contract). This is how operator overloading plugs into the existing
+  `mxs_op_*` path: `mxs_op_add(lhs, rhs)` checks `lhs`'s `vtable[OP_ADD_SLOT]`; not-the-thunk → call
+  the user `operator+`, else fall back to the builtin numeric/string logic.
+- `static` members (later) live in a **separate mutable area**, not in the const `MXClassInfo`, so
+  they don't break const-folding.
+- Cost accepted: vtables are **sparse** (each class sized to #global-selectors). Fine for v1 (D6:
+  naive first); selector coloring can shrink them later if memory matters.
+
+**STILL OPEN (Mux thinking) — single inheritance in v1?** The design above is inheritance-ready:
+global selector slots mean an override keeps the *same* slot, so a subclass vtable is the parent's
+copied + overrides replaced, and `MXClassInfo.parent` is already present — addable without re-layout.
+Not built until Mux decides. `operator` overload routes through the reserved slots (above);
+`static` members deferred. Data classes (below) need none of this and land first.
 
 ## Remaining for "complete stdlib + runtime"
 - OOP: finish the data-class slice; then methods (after dispatch decision), inheritance, operators,
@@ -258,3 +284,13 @@ this and can land first.
   represent variables as MXLeftValues + compile core to bitcode linked for JIT cross-module opt
   (D6); plus `match`/Error lowering and the `**`/`[...]` grammar. Still needs Mux's call on the
   intermediate-temporary ownership (non-binding operation results) across the JIT boundary.
+- 2026-05-31 [ai] Mux resolved the OOP method-dispatch open decision: **vtable** (not registry).
+  Reasoning: vtables-as-constant-globals let LLVM fold dispatch to a direct call + inline when the
+  receiver type is known (the D6 cross-boundary win), while a runtime registry is opaque and never
+  folds; and perf-critical methods are expected to go `@@foreign` C++ rather than rely on fast
+  dispatch. Recorded the type-descriptor design (const `MXClassInfo` + const vtable indexed by a
+  whole-program global selector slot; instance holds `const MXClassInfo*`; reserved low slots for
+  operators/`Object` virtuals shared with core.bc via a constants header; statics in a separate
+  mutable area; sparse tables, selector coloring later). Single inheritance in v1 is still open
+  (Mux thinking); the design is inheritance-ready. Data-class slice (fields/ctor/member-assign, no
+  dispatch) lands first.
