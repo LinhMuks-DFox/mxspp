@@ -54,8 +54,13 @@ object model from [progress05](./progress05-runtime-and-stdlib.md): every contai
 - `len(x)` / `append(xs, v)` are generic `@@foreign` prelude bindings (free functions for now;
   method syntax `xs.append(v)` waits for OOP method dispatch). No per-function codegen hardcoding.
 
-## Done (this slice — ArrayList)
-- (filled in by the agent log below)
+## Done
+- **`MXArrayList`** — the dynamic array as a real `core::MXObject` subclass (mxs::builtin), on the
+  new object model (progress09), not the reverted flat prototype. Ordered sequence of element
+  `MXObject*` (element ownership/rc deferred, D3). C++ API: append / get / set / size / length
+  (→MXInteger) / concat / repr (`[a, b, c]`) / RTTI. `extern "C"` ABI (`mxs_arraylist_*`) with
+  out-of-range → `MXError`. Unit-tested (core_test). Still pending (needs codegen rewiring,
+  progress09 ④): the `[...]` literal grammar + subscript `xs[i]` lowering to this ABI.
 
 ## Open / TODO
 - `pop`/`extend`/`clear`/`insert`, `operator*` (repeat), negative-index semantics.

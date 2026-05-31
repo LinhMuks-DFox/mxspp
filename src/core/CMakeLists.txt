@@ -1,5 +1,6 @@
 # 定义库 mxs-core
 add_library(core STATIC
+        MXArrayList.cpp
         MXBoolean.cpp
         MXError.cpp
         MXFloat.cpp

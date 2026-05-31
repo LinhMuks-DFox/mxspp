@@ -2,6 +2,7 @@
 // Currently: MXInteger (arbitrary-precision integer, progress09).
 #include "test_framework.h"
 
+#include "mxspp/core/MXArrayList.h"
 #include "mxspp/core/MXBoolean.h"
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
@@ -14,6 +15,7 @@
 #include <string>
 
 using mxs::MXObjectOwned;
+using mxs::builtin::MXArrayList;
 using mxs::builtin::MXBoolean;
 using mxs::builtin::MXFloat;
 using mxs::builtin::MXInteger;
@@ -214,6 +216,42 @@ MX_TEST(nil_basics) {
     CHECK(!n.equals(anInt));// nil is not equal to a (falsey) integer
     CHECK(std::string(MXNil::get_rtti().name) == "MXNil");
     CHECK(MXNil::get_rtti().parent == &MXObject::get_rtti());
+}
+
+MX_TEST(arraylist_basics) {
+    // keep element objects alive for the duration of the test (list borrows them)
+    auto a = MXInteger::from_literal("10");
+    auto b = MXInteger::from_literal("20");
+    auto c = MXInteger::from_literal("30");
+    MXArrayList xs;
+    CHECK(dynamic_cast<const MXInteger *>(xs.length().get())->to_decimal() == "0");
+    CHECK(xs.repr() == "[]");
+    xs.append(a.get());
+    xs.append(b.get());
+    xs.append(c.get());
+    CHECK(xs.size() == 3);
+    CHECK(dynamic_cast<const MXInteger *>(xs.length().get())->to_decimal() == "3");
+    CHECK(xs.repr() == "[10, 20, 30]");
+    CHECK(xs.get(0) == a.get());
+    CHECK(dynamic_cast<const MXInteger *>(xs.get(2))->to_decimal() == "30");
+    CHECK(xs.get(3) == nullptr);// out of range -> nullptr (C++ API)
+    CHECK(xs.get(-1) == nullptr);
+    // set
+    auto d = MXInteger::from_literal("99");
+    CHECK(xs.set(1, d.get()));
+    CHECK(xs.repr() == "[10, 99, 30]");
+    CHECK(!xs.set(5, d.get()));
+    // concat -> a new list
+    MXArrayList ys;
+    auto e = MXInteger::from_literal("40");
+    ys.append(e.get());
+    auto z = xs.concat(ys);
+    CHECK(dynamic_cast<const MXArrayList *>(z.get())->size() == 4);
+    CHECK(dynamic_cast<const MXArrayList *>(z.get())->repr() == "[10, 99, 30, 40]");
+    CHECK(xs.size() == 3);// operands unchanged
+    // RTTI
+    CHECK(std::string(MXArrayList::get_rtti().name) == "MXArrayList");
+    CHECK(MXArrayList::get_rtti().parent == &MXObject::get_rtti());
 }
 
 int main() { return mxtest::run_all(); }
