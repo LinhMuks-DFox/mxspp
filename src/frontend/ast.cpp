@@ -73,6 +73,27 @@ namespace {
             if (op == "==") return b.CreateFCmpOEQ(l, r, "eq");
             if (op == "!=") return b.CreateFCmpONE(l, r, "ne");
         } else {
+            if (op == "/" || op == "%") {
+                // sdiv/srem by zero is undefined — guard it and panic at runtime.
+                auto *fn = ctx.currentFunction;
+                auto *isZero = b.CreateICmpEQ(
+                        r, llvm::ConstantInt::get(r->getType(), 0), "iszero");
+                auto *panicBB = llvm::BasicBlock::Create(ctx.llvmContext, "divzero", fn);
+                auto *contBB = llvm::BasicBlock::Create(ctx.llvmContext, "divok", fn);
+                b.CreateCondBr(isZero, panicBB, contBB);
+                b.SetInsertPoint(panicBB);
+                auto *panicFn = ctx.module->getFunction("mxs_panic");
+                if (!panicFn) {
+                    auto *pty = llvm::FunctionType::get(
+                            llvm::Type::getVoidTy(ctx.llvmContext),
+                            { llvm::PointerType::get(ctx.llvmContext, 0) }, false);
+                    panicFn = llvm::Function::Create(
+                            pty, llvm::Function::ExternalLinkage, "mxs_panic", ctx.module);
+                }
+                b.CreateCall(panicFn, { b.CreateGlobalStringPtr("division by zero") });
+                b.CreateUnreachable();
+                b.SetInsertPoint(contBB);
+            }
             if (op == "+") return b.CreateAdd(l, r, "add");
             if (op == "-") return b.CreateSub(l, r, "sub");
             if (op == "*") return b.CreateMul(l, r, "mul");

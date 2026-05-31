@@ -34,9 +34,11 @@ Good error reporting (syntax errors, numerical/runtime errors) and an interactiv
 - **Friendly messages**: replace raw `parse error matching tao::pegtl::one<'}'>` with `expected '}'`
   (PEGTL custom error messages via a control/`raise_message`), and add more `must<>` anchors
   (after `func`, `if`, `(` in calls, `;` where safe — must not break block_expr's trailing expr).
-- **Numerical / runtime errors**: the value-based Error model (docs §6) — `raise`/`panic`/`match`
-  codegen + an `Error`/`MXError` runtime type; runtime checks (division by zero, etc.). This needs
-  the object model and overlaps progress05.
+- **Numerical / runtime errors**: DONE for unrecoverable panics — `mxs_panic(msg)` runtime
+  (stderr + exit 1) + a codegen guard on integer `/` and `%` (panics "division by zero").
+  Verified: `10/2`->5, `10/0`->panic+exit1. STILL TODO: the *recoverable* value-based Error model
+  (docs §6 — `raise`/`match`/`Error` object), which needs the object model (overlaps progress05);
+  plus more runtime checks (overflow, array bounds) once containers exist.
 - **Shell (REPL)**: implement the empty `shell` module — read-eval-print on top of the JIT (eval
   expressions, accumulate definitions). `mxs` with no args → interactive prompt.
 

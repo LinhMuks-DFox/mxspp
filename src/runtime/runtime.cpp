@@ -10,6 +10,7 @@
 // library (strings, containers, dynamic dispatch, the mxs-side wrappers) build on top later.
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 
 namespace {
     std::FILE *mxs_stream(std::int64_t id) {
@@ -46,5 +47,12 @@ extern "C" {
         std::fprintf(mxs_stream(s), "%s\n", p ? p : "");
     }
     void mxs_println(std::int64_t s) { std::fputc('\n', mxs_stream(s)); }
+
+    // Unrecoverable error: print to stderr and terminate (docs §6 "panic").
+    [[noreturn]] void mxs_panic(const char *msg) {
+        std::fprintf(stderr, "mxs: panic: %s\n", msg ? msg : "");
+        std::fflush(stderr);
+        std::exit(1);
+    }
 
 }// extern "C"
