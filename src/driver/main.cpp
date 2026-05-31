@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -18,6 +19,18 @@
 #endif
 
 namespace {
+    // The std prelude (std.io), auto-included on codegen paths so programs can call
+    // println(...) etc. without a manual @@foreign line. Mirrors std/io.mxs; once import
+    // resolution lands this is read from the file instead. Parsed as its own unit so user
+    // source line numbers stay accurate for diagnostics.
+    constexpr const char *kPrelude = R"MXS(
+@@foreign(symbol_name="mxs_println_int") func __println_int(stream: int, x: int) -> nil;
+@@foreign(symbol_name="mxs_print_int")   func __print_int(stream: int, x: int) -> nil;
+func println(x: int) -> nil { __println_int(0, x); }
+func print(x: int) -> nil { __print_int(0, x); }
+func eprintln(x: int) -> nil { __println_int(1, x); }
+)MXS";
+
     std::string read_file(const std::string &path, bool &ok) {
         std::ifstream f(path);
         if (!f) {
@@ -30,7 +43,6 @@ namespace {
         return ss.str();
     }
 
-    // Locate runtime.bc next to the executable (build/bin/), with a couple of fallbacks.
     std::string runtime_bc_path() {
 #if defined(__linux__)
         char buf[4096];
@@ -52,6 +64,7 @@ namespace {
 }// namespace
 
 int main(int argc, char **argv) {
+    namespace parser = mxs::frontend::parser;
     const std::vector<std::string> args(argv + 1, argv + argc);
 
     if (args.size() == 2 &&
@@ -62,15 +75,22 @@ int main(int argc, char **argv) {
             std::cerr << "error: cannot open " << args[1] << "\n";
             return 1;
         }
-        auto tu = mxs::frontend::parser::parse_to_ast(source, args[1]);
+        auto tu = parser::parse_to_ast(source, args[1]);
         if (!tu) {
             std::cerr << "error: failed to parse " << args[1] << "\n";
             return 1;
         }
 
         if (args[0] == "--dump-ast") {
-            mxs::frontend::parser::dump_ast(*tu, std::cout);
+            parser::dump_ast(*tu, std::cout);
             return 0;
+        }
+
+        // Prepend the std prelude (parsed separately so user line numbers are unaffected).
+        if (auto prelude = parser::parse_to_ast(kPrelude, "<prelude>")) {
+            tu->statements.insert(tu->statements.begin(),
+                                  std::make_move_iterator(prelude->statements.begin()),
+                                  std::make_move_iterator(prelude->statements.end()));
         }
 
         auto context = std::make_unique<llvm::LLVMContext>();
@@ -84,8 +104,6 @@ int main(int argc, char **argv) {
             module->print(llvm::outs(), nullptr);
             return 0;
         }
-
-        // run: JIT-compile and execute main().
         return mxs::jit::run(std::move(module), std::move(context), runtime_bc_path());
     }
 

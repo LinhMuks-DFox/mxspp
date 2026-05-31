@@ -1,0 +1,18 @@
+# MXScript standard I/O — std.io
+#
+# Two layers (docs/type_system.md §8, docs/ffi.md):
+#   1. @@foreign bindings to the runtime fast-dispatch C-ABI (mxs_*).
+#   2. mxs-level wrappers that pick the stream (0=stdout, 1=stderr, 2=stdlog).
+#
+# Bound generically via @@foreign — the compiler does NO per-function special-casing.
+# (Currently the driver auto-includes this as a prelude; once import resolution lands,
+# programs get it via `import std.io`.)
+
+# ---- runtime fast-dispatch bindings (stream id + value) ----
+@@foreign(symbol_name="mxs_println_int") func __println_int(stream: int, x: int) -> nil;
+@@foreign(symbol_name="mxs_print_int")   func __print_int(stream: int, x: int) -> nil;
+
+# ---- mxs-level API ----
+func println(x: int) -> nil { __println_int(0, x); }
+func print(x: int) -> nil { __print_int(0, x); }
+func eprintln(x: int) -> nil { __println_int(1, x); }
