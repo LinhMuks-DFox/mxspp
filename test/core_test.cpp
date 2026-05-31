@@ -7,6 +7,7 @@
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
 #include "mxspp/core/MXInteger.h"
+#include "mxspp/core/MXLeftValue.h"
 #include "mxspp/core/MXNil.h"
 #include "mxspp/core/MXObject.h"
 #include "mxspp/core/MXString.h"
@@ -14,6 +15,8 @@
 #include <memory>
 #include <string>
 
+using mxs::make_immutable_left_value;
+using mxs::make_mutable_left_value;
 using mxs::MXObjectOwned;
 using mxs::builtin::MXArrayList;
 using mxs::builtin::MXBoolean;
@@ -252,6 +255,32 @@ MX_TEST(arraylist_basics) {
     // RTTI
     CHECK(std::string(MXArrayList::get_rtti().name) == "MXArrayList");
     CHECK(MXArrayList::get_rtti().parent == &MXObject::get_rtti());
+}
+
+MX_TEST(left_value_immutable_and_mutable) {
+    // `let x = 3;`  ->  an immutable binding holding an MXInteger
+    auto x = make_immutable_left_value(MXInteger::from_literal("3"));
+    CHECK(!x->is_mutable());
+    CHECK(dynamic_cast<const MXInteger *>(x->rvalue())->to_decimal() == "3");
+    // `x += 3;`  ->  rvalue_update on an immutable binding is an error; value is unchanged
+    auto *cur = dynamic_cast<const MXInteger *>(x->rvalue());
+    auto sum = cur->add(
+            *dynamic_cast<const MXInteger *>(MXInteger::from_literal("3").get()));
+    auto res = x->rvalue_update(std::move(sum));
+    CHECK_MSG(dynamic_cast<const mxs::core::MXError *>(res.get()) != nullptr,
+              "immutable binding rejects update");
+    CHECK(dynamic_cast<const MXInteger *>(x->rvalue())->to_decimal() == "3");// unchanged
+
+    // `let mut y = 3; y += 3;`  ->  mutable binding updates successfully
+    auto y = make_mutable_left_value(MXInteger::from_literal("3"));
+    CHECK(y->is_mutable());
+    auto *yc = dynamic_cast<const MXInteger *>(y->rvalue());
+    auto ysum =
+            yc->add(*dynamic_cast<const MXInteger *>(MXInteger::from_literal("3").get()));
+    auto ok = y->rvalue_update(std::move(ysum));
+    CHECK_MSG(dynamic_cast<const mxs::builtin::MXNil *>(ok.get()) != nullptr,
+              "mutable update returns nil");
+    CHECK(dynamic_cast<const MXInteger *>(y->rvalue())->to_decimal() == "6");
 }
 
 int main() { return mxtest::run_all(); }

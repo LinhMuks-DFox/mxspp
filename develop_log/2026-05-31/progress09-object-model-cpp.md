@@ -132,3 +132,13 @@ the canonical design and supersedes the flat model.
   ABI + RTTI; MXFloat /0 → MXError). All in mxs::builtin. core_test now 12 cases, ctest 3/3.
   Scalar object model done. NEXT (step ③): the left-value model (make_immutable_left_value /
   rvalue_update / mutability) and codegen rewiring to emit the type ABI + link core as bitcode.
+- 2026-05-31 [ai] Implemented the **left-value model** (D2): `mxs::core::MXLeftValue` (a binding
+  cell owning its r-value via unique_ptr + a mutability flag) + `mxs::make_immutable_left_value` /
+  `make_mutable_left_value` + extern "C" ABI (mxs_lvalue_*). `rvalue_update` on an immutable (`let`)
+  binding returns an MXError; on a mutable (`let mut`) binding it frees the old value and takes the
+  new (the develop_rule.md ownership default per the open Q — bindings own their r-value).
+  Unit-tested (the `let x=3; x+=3` → error vs `let mut` → 6 example from D2). Also implemented
+  **MXArrayList** (progress07). NEXT, the big step ④: rewire codegen to emit these type ABIs +
+  represent variables as MXLeftValues + compile core to bitcode linked for JIT cross-module opt
+  (D6); plus `match`/Error lowering and the `**`/`[...]` grammar. Still needs Mux's call on the
+  intermediate-temporary ownership (non-binding operation results) across the JIT boundary.

@@ -5,6 +5,7 @@ add_library(core STATIC
         MXError.cpp
         MXFloat.cpp
         MXInteger.cpp
+        MXLeftValue.cpp
         MXMacro.cpp
         MXNil.cpp
         MXNumeric.cpp
