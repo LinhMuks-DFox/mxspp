@@ -58,6 +58,13 @@ namespace mxs::jit {
         link_bitcode(*jit, runtimeBcPath, "runtime");
         link_bitcode(*jit, coreBcPath, "core");
 
+        // codegen builds the user IR module target-agnostically (no data layout / triple), so
+        // it inherits a default that need not match the host (e.g. an AArch64-ELF layout vs the
+        // macOS Mach-O JIT). Stamp it with the JIT host's data layout + triple before adding, or
+        // ORC rejects it ("Added modules have incompatible data layouts").
+        module->setDataLayout(jit->getDataLayout());
+        module->setTargetTriple(jit->getTargetTriple().str());
+
         if (auto e = jit->addIRModule(
                     orc::ThreadSafeModule(std::move(module), std::move(context)))) {
             logAllUnhandledErrors(std::move(e), errs(), "mxs jit (module): ");

@@ -7,6 +7,10 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Support/raw_ostream.h>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 
@@ -79,6 +83,17 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
         const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
         if (n > 0) {
             buf[n] = '\0';
+            std::string p(buf);
+            const auto slash = p.find_last_of('/');
+            if (slash != std::string::npos) {
+                std::string c = p.substr(0, slash) + "/" + name;
+                if (std::ifstream(c)) return c;
+            }
+        }
+#elif defined(__APPLE__)
+        char buf[4096];
+        std::uint32_t bufsize = sizeof(buf);
+        if (_NSGetExecutablePath(buf, &bufsize) == 0) {
             std::string p(buf);
             const auto slash = p.find_last_of('/');
             if (slash != std::string::npos) {

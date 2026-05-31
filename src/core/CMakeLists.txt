@@ -30,6 +30,20 @@ target_link_libraries(core PUBLIC ${MXS_LLVM_LIBRARIES})
 # resolve and LLVM can inline across the mxs/lib boundary. These sources are LLVM-free (no
 # project-LLVM headers), so they lower to plain bitcode; we llvm-link the parts together.
 find_program(MXS_LLVM_LINK NAMES llvm-link llvm-link-20 llvm-link-19 llvm-link-18 REQUIRED)
+# macOS: these bitcode commands are raw clang invocations that bypass CMake's automatic
+# -isysroot injection, so the vendored libc++ headers can't find the SDK's <wchar.h>/mbstate_t.
+# Pass the SDK sysroot explicitly on Apple (the list stays empty elsewhere, e.g. Linux).
+set(MXS_BC_SYSROOT)
+if(APPLE)
+    set(_mxs_sdk "${CMAKE_OSX_SYSROOT}")   # empty under Command Line Tools (no full Xcode)
+    if(NOT _mxs_sdk)
+        execute_process(COMMAND xcrun --show-sdk-path
+                        OUTPUT_VARIABLE _mxs_sdk OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
+    if(_mxs_sdk)
+        set(MXS_BC_SYSROOT -isysroot ${_mxs_sdk})
+    endif()
+endif()
 set(CORE_BC_SOURCES
         MXObject.cpp MXPopulationManager.cpp MXError.cpp
         MXInteger.cpp MXString.cpp MXFloat.cpp MXBoolean.cpp MXNil.cpp
@@ -45,6 +59,7 @@ foreach(src IN LISTS CORE_BC_SOURCES)
             COMMAND ${CMAKE_CXX_COMPILER} -emit-llvm -c
                     ${CMAKE_CURRENT_SOURCE_DIR}/${src} -o ${out}
                     -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics
+                    ${MXS_BC_SYSROOT}
                     -I ${CMAKE_CURRENT_SOURCE_DIR}/../../include
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src} ${CORE_BC_HEADERS}
             COMMENT "core -> bitcode: ${src}")

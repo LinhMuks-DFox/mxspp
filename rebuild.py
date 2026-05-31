@@ -7,8 +7,12 @@ import subprocess
 import sys
 
 # --- Configuration ---
-BUILD_DIR = pathlib.Path("build")
+# macOS uses a separate build dir + toolchain (Homebrew llvm@20, Mach-O) so it neither
+# collides with a Linux build/ nor picks the Linux toolchain. Selected automatically.
+_IS_MACOS = sys.platform == "darwin"
+BUILD_DIR = pathlib.Path("build-macos" if _IS_MACOS else "build")
 BIN_DIR = pathlib.Path("bin")
+TOOLCHAIN_FILE = "toolchain.macos.cmake" if _IS_MACOS else "toolchain.cmake"
 
 def clean_directories():
     """彻底删除构建和输出目录"""
@@ -41,7 +45,7 @@ def run_cmake_configure():
     cmake_configure_command = [
         "cmake",
         "-G", "Ninja",
-        "-D", f"CMAKE_TOOLCHAIN_FILE={pathlib.Path('..') / 'toolchain.cmake'}",
+        "-D", f"CMAKE_TOOLCHAIN_FILE={pathlib.Path('..') / TOOLCHAIN_FILE}",
         ".."
     ]
     # --- 【修改结束】 ---
