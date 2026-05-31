@@ -1,0 +1,123 @@
+// Unit tests for the core C++ object types (real MXObject subclasses). Links `core`.
+// Currently: MXInteger (arbitrary-precision integer, progress09).
+#include "test_framework.h"
+
+#include "mxspp/core/MXError.h"
+#include "mxspp/core/MXInteger.h"
+#include "mxspp/core/MXObject.h"
+
+#include <memory>
+#include <string>
+
+using mxs::MXObjectOwned;
+using mxs::builtin::MXInteger;
+using mxs::core::MXObject;
+
+namespace {
+    // Decimal string of an arithmetic result, or "<err:Name>" if it produced an MXError.
+    std::string dec(const MXObjectOwned &o) {
+        if (auto *i = dynamic_cast<const MXInteger *>(o.get())) return i->to_decimal();
+        return "<err>";
+    }
+    MXObjectOwned lit(const std::string &s) { return MXInteger::from_literal(s); }
+    const MXInteger &as_int(const MXObjectOwned &o) {
+        return *dynamic_cast<const MXInteger *>(o.get());
+    }
+}
+
+MX_TEST(integer_from_literal_and_repr) {
+    CHECK(as_int(lit("0")).to_decimal() == "0");
+    CHECK(as_int(lit("42")).to_decimal() == "42");
+    CHECK(as_int(lit("-42")).to_decimal() == "-42");
+    CHECK(as_int(lit("+7")).to_decimal() == "7");
+    // a value well beyond 64 bits round-trips through decimal exactly
+    const std::string big = "123456789012345678901234567890123456789";
+    CHECK(as_int(lit(big)).to_decimal() == big);
+    CHECK(as_int(lit("0")).repr() == "0");
+    // bad literals -> MXError
+    CHECK(dynamic_cast<const mxs::core::MXError *>(lit("12x3").get()) != nullptr);
+    CHECK(dynamic_cast<const mxs::core::MXError *>(lit("-").get()) != nullptr);
+}
+
+MX_TEST(integer_add_sub_mul) {
+    CHECK(dec(as_int(lit("2")).add(as_int(lit("3")))) == "5");
+    CHECK(dec(as_int(lit("-2")).add(as_int(lit("3")))) == "1");
+    CHECK(dec(as_int(lit("2")).add(as_int(lit("-3")))) == "-1");
+    CHECK(dec(as_int(lit("2")).add(as_int(lit("-2")))) == "0");
+    CHECK(dec(as_int(lit("10")).sub(as_int(lit("4")))) == "6");
+    CHECK(dec(as_int(lit("4")).sub(as_int(lit("10")))) == "-6");
+    CHECK(dec(as_int(lit("6")).mul(as_int(lit("7")))) == "42");
+    CHECK(dec(as_int(lit("-6")).mul(as_int(lit("7")))) == "-42");
+    CHECK(dec(as_int(lit("-6")).mul(as_int(lit("-7")))) == "42");
+    // carry across a 64-bit limb boundary: 2^64 = 18446744073709551616
+    CHECK(dec(as_int(lit("18446744073709551615")).add(as_int(lit("1")))) ==
+          "18446744073709551616");
+}
+
+MX_TEST(integer_div_mod) {
+    CHECK(dec(as_int(lit("20")).div(as_int(lit("5")))) == "4");
+    CHECK(dec(as_int(lit("20")).div(as_int(lit("7")))) == "2");// truncates
+    CHECK(dec(as_int(lit("20")).mod(as_int(lit("7")))) == "6");
+    CHECK(dec(as_int(lit("-20")).div(as_int(lit("7")))) == "-2");
+    CHECK(dec(as_int(lit("-20")).mod(as_int(lit("7")))) == "-6");// sign of dividend
+    // division by zero -> MXError, not a crash
+    CHECK(dynamic_cast<const mxs::core::MXError *>(
+                  as_int(lit("1")).div(as_int(lit("0"))).get()) != nullptr);
+    CHECK(dynamic_cast<const mxs::core::MXError *>(
+                  as_int(lit("1")).mod(as_int(lit("0"))).get()) != nullptr);
+    // big / big: (10^30) / (10^15) == 10^15
+    CHECK(dec(as_int(lit("1000000000000000000000000000000"))
+                      .div(as_int(lit("1000000000000000")))) == "1000000000000000");
+}
+
+MX_TEST(integer_pow_bignum) {
+    CHECK(dec(as_int(lit("2")).pow(as_int(lit("10")))) == "1024");
+    CHECK(dec(as_int(lit("-2")).pow(as_int(lit("3")))) == "-8");
+    CHECK(dec(as_int(lit("-2")).pow(as_int(lit("4")))) == "16");
+    CHECK(dec(as_int(lit("7")).pow(as_int(lit("0")))) == "1");
+    // 2 ** 256 — the headline big-number case (progress09 D4)
+    const std::string two256 = "115792089237316195423570985008687907853269984665640564039"
+                               "457584007913129639936";
+    CHECK(dec(as_int(lit("2")).pow(as_int(lit("256")))) == two256);
+    // negative exponent -> MXError
+    CHECK(dynamic_cast<const mxs::core::MXError *>(
+                  as_int(lit("2")).pow(as_int(lit("-1"))).get()) != nullptr);
+}
+
+MX_TEST(integer_cmp) {
+    CHECK(as_int(lit("2")).cmp(as_int(lit("3"))) < 0);
+    CHECK(as_int(lit("3")).cmp(as_int(lit("3"))) == 0);
+    CHECK(as_int(lit("4")).cmp(as_int(lit("3"))) > 0);
+    CHECK(as_int(lit("-4")).cmp(as_int(lit("3"))) < 0);
+    CHECK(as_int(lit("-4")).cmp(as_int(lit("-3"))) < 0);// -4 < -3
+    CHECK(as_int(lit("-3")).cmp(as_int(lit("-4"))) > 0);
+}
+
+MX_TEST(integer_int_type) {
+    CHECK(as_int(lit("0")).int_type() == "int8");
+    CHECK(as_int(lit("127")).int_type() == "int8");
+    CHECK(as_int(lit("128")).int_type() == "uint8");
+    CHECK(as_int(lit("255")).int_type() == "uint8");
+    CHECK(as_int(lit("256")).int_type() == "int16");
+    CHECK(as_int(lit("-128")).int_type() == "int8");
+    CHECK(as_int(lit("-129")).int_type() == "int16");
+    CHECK(as_int(lit("4294967295")).int_type() == "uint32");// 2^32 - 1
+    CHECK(as_int(lit("9223372036854775807")).int_type() == "int64");// INT64_MAX
+    CHECK(as_int(lit("18446744073709551615")).int_type() == "uint64");// 2^64 - 1
+    CHECK(as_int(lit("18446744073709551616")).int_type() == "UltraInteger");// 2^64
+    // 2 ** 256 is firmly UltraInteger
+    CHECK(dynamic_cast<const MXInteger &>(*as_int(lit("2")).pow(as_int(lit("256"))))
+                  .int_type() == "UltraInteger");
+}
+
+MX_TEST(integer_rtti_and_size) {
+    auto i = lit("5");
+    CHECK(std::string(i->repr()) == "5");
+    CHECK(&MXInteger::get_rtti() != nullptr);
+    CHECK(std::string(MXInteger::get_rtti().name) == "MXInteger");
+    CHECK(MXInteger::get_rtti().parent == &MXObject::get_rtti());
+    // int_size is at least the object header (storage may be 0 for the small value 5's 1 limb)
+    CHECK(as_int(i).int_size() >= sizeof(MXInteger));
+}
+
+int main() { return mxtest::run_all(); }

@@ -48,6 +48,26 @@ backtracking/regression risk):
   `1:22`); `func f( -> int` reports `1:9: expected ')'`; an unterminated block reports
   `expected '}'`; multi-line sources report the correct line:col.
 
+## Error model — design (Mux, 2026-05-31): `match`-based, no `raise` keyword
+Supersedes the docs §6 `raise`/`match` sketch and progress05's note.
+
+- **No `raise` keyword/statement.** (The grammar still has `K_RAISE`/`raise_expr` — remove them.)
+  `raise` exists only as a **function**: a special form of `exit` — *exit with error*.
+- **All errors must be handled.** A fallible operation returns a *result-or-error*; the caller is
+  required to handle it via `match`. The error path is just the match's `error` case; an **empty**
+  `error` case means the default "exit with error code" (i.e. `raise` is a special case of `match`).
+  ```mxs
+  let x = match (something_returning_result_or_error()) {
+      case { ... }        # ok value
+      case error { }      # empty -> default: exit with error code
+  }
+  ```
+- Implications: `match` becomes the core construct (currently `MatchStatement` is a no-op stub, and
+  `match_expr` exists in the grammar); it must work as an **expression** (binds a value, as above).
+  Needs the object model (an `Error` object) and result-or-error returns. Lands with/after
+  [progress09](./progress09-object-model-cpp.md). Drop `K_RAISE`/`raise_expr`/`raise` keyword from
+  the grammar; provide `raise(...)`/`exit(...)` as functions.
+
 ## Open / TODO
 - **More precise messages / anchors**: `unexpected token` is generic; deriving "expected X" at the
   furthest point needs grammar introspection. Adding more `must<>` anchors (after `func`, `if`, call

@@ -12,3 +12,10 @@ add_executable(runtime_test runtime_test.cpp $<TARGET_OBJECTS:runtime_obj>)
 target_include_directories(runtime_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_test(NAME runtime_test COMMAND runtime_test)
+
+# Core type tests — the real C++ MXObject subclasses (MXInteger, …). Links `core`.
+add_executable(core_test core_test.cpp)
+target_include_directories(core_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(core_test PRIVATE core)
+
+add_test(NAME core_test COMMAND core_test)
