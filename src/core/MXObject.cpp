@@ -2,7 +2,6 @@
 #include "mxspp/core/MXPopulationManager.h"
 #include "mxspp/core/MXType.h"
 #include "mxspp/core/_type_def.h"
-#include "llvm/IR/Instruction.h"
 namespace mxs::core {
 
     MXObject::MXObject(bool is_static) : is_static(is_static) {

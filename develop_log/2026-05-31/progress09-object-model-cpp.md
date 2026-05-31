@@ -103,6 +103,18 @@ the canonical design and supersedes the flat model.
   implementation language for the core types because it is ergonomic + RTTI/ownership fit
   develop_rule.md — but the architecture does not bake C++ in.
 
+## Step ④ — codegen rewiring (in progress)
+- **core.bc landed.** The core object types compile to a single LLVM bitcode `core.bc`
+  (per-source `-emit-llvm` + `llvm-link`), built next to `runtime.bc`. Verified to export the type
+  ABI (`mxs_int_add`, `mxs_str_concat`, `mxs_float_add`, `mxs_arraylist_*`, `mxs_lvalue_*`,
+  `mxs_retain`/`mxs_release`, …). This is what the JIT links in so those symbols resolve and LLVM
+  can inline across the mxs/lib boundary (D6). (Removed a stray unused `llvm/IR/Instruction.h`
+  include from MXObject.cpp so the core sources are LLVM-free and lower to plain bitcode.)
+- NEXT in ④: have the JIT load `core.bc`; add a new-object-model codegen path that emits the type
+  ABI calls (literals→`mxs_*_from_literal`, ops→`mxs_*_add`/…, vars→`MXLeftValue`, temporaries
+  retained/released per D8) + a polymorphic print over `MXObject::repr`; prove `println(2+3)`→5
+  through real `MXInteger`s; then `match`/Error, `**`/`[...]`, retire the flat runtime.
+
 ## Impact / sequencing
 1. Rework `runtime.cpp` from the flat union into the `extern "C"` facade over real core types.
 2. Implement the core types completely (start with `MXInteger` + `MXString`, then `MXFloat`/
