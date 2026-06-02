@@ -9,7 +9,15 @@ namespace mxs::builtin {
 
     MXArrayList::MXArrayList(bool is_static) : core::MXObject(is_static) { }
 
-    auto MXArrayList::append(core::MXObject *item) -> void { items_.push_back(item); }
+    MXArrayList::~MXArrayList() {
+        for (auto *item : items_)
+            if (item) item->release();
+    }
+
+    auto MXArrayList::append(core::MXObject *item) -> void {
+        if (item) item->retain();// the list holds a strong reference
+        items_.push_back(item);
+    }
 
     auto MXArrayList::get(std::int64_t index) const -> core::MXObject * {
         if (index < 0 || static_cast<std::size_t>(index) >= items_.size()) return nullptr;
@@ -18,6 +26,9 @@ namespace mxs::builtin {
 
     auto MXArrayList::set(std::int64_t index, core::MXObject *item) -> bool {
         if (index < 0 || static_cast<std::size_t>(index) >= items_.size()) return false;
+        if (item) item->retain();
+        if (items_[static_cast<std::size_t>(index)])
+            items_[static_cast<std::size_t>(index)]->release();
         items_[static_cast<std::size_t>(index)] = item;
         return true;
     }
@@ -28,8 +39,8 @@ namespace mxs::builtin {
 
     auto MXArrayList::concat(const MXArrayList &other) const -> MXObjectOwned {
         auto out = std::make_unique<MXArrayList>();
-        out->items_ = items_;
-        out->items_.insert(out->items_.end(), other.items_.begin(), other.items_.end());
+        for (auto *item : items_) out->append(item);// append retains each
+        for (auto *item : other.items_) out->append(item);
         return out;
     }
 
@@ -80,6 +91,8 @@ extern "C" {
 MXObject *mxs_arraylist_new() { return new MXArrayList(); }
 
 void mxs_arraylist_append(MXObject *list, MXObject *item) {
+    // Borrow convention: the list retains its own reference; the caller (codegen) still owns and
+    // releases the +1 it passed in. Uniform with the other element-storing ABIs.
     if (auto *l = as_list(list)) l->append(item);
 }
 
@@ -97,6 +110,7 @@ MXObject *mxs_arraylist_get(MXObject *list, MXObject *idx) {
     MXObject *item = l->get(i);
     if (!item)
         return new mxs::core::MXError("IndexError", "arraylist index out of range");
+    item->retain();// accessor returns +1 (ARC)
     return item;
 }
 
@@ -108,7 +122,7 @@ MXObject *mxs_arraylist_set(MXObject *list, MXObject *idx, MXObject *item) {
                                       "arraylist.set expects a list and an int");
     if (!l->set(i, item))
         return new mxs::core::MXError("IndexError", "arraylist index out of range");
-    return list;
+    return list;// borrow convention: set retained its own ref; caller still owns its +1
 }
 
 MXObject *mxs_arraylist_concat(MXObject *a, MXObject *b) {

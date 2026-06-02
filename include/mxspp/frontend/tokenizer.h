@@ -84,7 +84,7 @@ namespace mxs::frontend::tokenizer {
                          grammar::K_IMPORT, grammar::K_IN, grammar::K_INTERFACE,
                          grammar::K_LET, grammar::K_LOOP, grammar::K_MATCH,
                          grammar::K_MUT, grammar::K_OPERATOR, grammar::K_OVERRIDE,
-                         grammar::K_PRIVATE, grammar::K_PUBLIC, grammar::K_RAISE,
+                         grammar::K_PRIVATE, grammar::K_PUBLIC,
                          grammar::K_RETURN, grammar::K_STATIC, grammar::K_TYPE,
                          grammar::K_UNTIL> { };
 

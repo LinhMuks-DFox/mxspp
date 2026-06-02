@@ -1,5 +1,7 @@
 # Subscript assignment and for-in over a container (run-core).
 # Expected: [1, 99, 3] / 103 / 10 / 20 / 30
+import std.io.{println};
+
 func main() -> int {
     let xs = [1, 2, 3];
     xs[1] = 99;

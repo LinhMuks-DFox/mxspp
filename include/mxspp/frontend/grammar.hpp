@@ -83,7 +83,6 @@ namespace mxs::frontend::grammar {
     struct K_OVERRIDE : keyword<'o', 'v', 'e', 'r', 'r', 'i', 'd', 'e'> { };
     struct K_PRIVATE : keyword<'p', 'r', 'i', 'v', 'a', 't', 'e'> { };
     struct K_PUBLIC : keyword<'p', 'u', 'b', 'l', 'i', 'c'> { };
-    struct K_RAISE : keyword<'r', 'a', 'i', 's', 'e'> { };
     struct K_RETURN : keyword<'r', 'e', 't', 'u', 'r', 'n'> { };
     struct K_STATIC : keyword<'s', 't', 'a', 't', 'i', 'c'> { };
     struct K_TYPE : keyword<'t', 'y', 'p', 'e'> { };
@@ -114,8 +113,17 @@ namespace mxs::frontend::grammar {
                   ignored, pegtl::one<'>'>> { };
 
     struct param;
+    // A variadic rest parameter `...name: type` (progress12 D-VARARG). Only valid as the last
+    // entry of a param_list; it has no default. The call site packs surplus args into an MXList.
+    struct rest_param : pegtl::seq<pegtl::string<'.', '.', '.'>, ignored, identifier,
+                                   ignored, pegtl::one<':'>, ignored, type_spec> { };
+    // Zero or more regular params, with an optional trailing rest param; or a lone rest param.
     struct param_list
-        : pegtl::list<param, pegtl::seq<ignored, pegtl::one<','>, ignored>> { };
+        : pegtl::sor<
+                  pegtl::seq<pegtl::list<param,
+                                         pegtl::seq<ignored, pegtl::one<','>, ignored>>,
+                             pegtl::opt<ignored, pegtl::one<','>, ignored, rest_param>>,
+                  rest_param> { };
     struct param
         : pegtl::seq<identifier_list, ignored, pegtl::one<':'>, ignored, type_spec,
                      pegtl::opt<ignored, pegtl::one<'='>, ignored, expression>> { };
@@ -144,7 +152,6 @@ namespace mxs::frontend::grammar {
     struct call_args;// Forward declare for constructor_def
     struct block_expr;
     struct match_expr;
-    struct raise_expr;
     struct lambda_expr;
     struct list_literal;// `[a, b, c]` — ArrayList literal (defined after `expression`)
 
@@ -236,7 +243,6 @@ namespace mxs::frontend::grammar {
     struct list_literal : pegtl::seq<pegtl::one<'['>, ignored, pegtl::opt<list_elems>,
                                      ignored, pegtl::one<']'>> { };
 
-    struct raise_expr : pegtl::seq<K_RAISE, ignored, expression> { };
     struct lambda_expr : pegtl::seq<func_sig, ignored, pegtl::string<'=', '>'>, ignored,
                                     pegtl::sor<expression, block>> { };
     struct block_expr
@@ -391,9 +397,19 @@ namespace mxs::frontend::grammar {
                                          pegtl::seq<ignored, pegtl::one<','>, ignored>>,
                              ignored, pegtl::one<')'>>> { };
 
+    // Import (progress13 D2, "1+3"). `fqdn` matches the dotted path; an optional tail selects the
+    // namespacing form. The selective form `. "{" id_list "}"` and the alias form `as name` are
+    // distinct named rules so the parser can tell them apart from the fqdn. The leading-dot
+    // selector backtracks cleanly: `fqdn`'s `list<identifier,'.'>` stops at the `.` before `{`
+    // (a `{` is not an identifier), leaving that `.` for `import_selector`.
+    struct import_selector
+        : pegtl::seq<pegtl::one<'.'>, ignored, pegtl::one<'{'>, ignored, identifier_list,
+                     ignored, pegtl::one<'}'>> { };
+    struct import_alias : pegtl::seq<K_AS, ignored, identifier> { };
+    struct import_tail : pegtl::sor<import_selector, import_alias> { };
     struct import_stmt
-        : pegtl::seq<K_IMPORT, ignored, fqdn,
-                     pegtl::opt<ignored, K_AS, ignored, identifier>, pegtl::one<';'>> { };
+        : pegtl::seq<K_IMPORT, ignored, fqdn, pegtl::opt<ignored, import_tail>, ignored,
+                     pegtl::one<';'>> { };
     struct binding_stmt
         : pegtl::seq<pegtl::sor<K_STATIC, K_DYNAMIC>, ignored, K_LET, ignored, identifier,
                      ignored, pegtl::one<'='>, ignored, expression, pegtl::one<';'>> { };

@@ -1,0 +1,10 @@
+# format: positional {}, indexed {N}, spec {:5}/{:<5}/{:>5}, debug {:?}
+import std.io.{println, format};
+func main() -> int {
+    println(format("{} {} {}", 1, "two", true));
+    println(format("{0} {0} {1}", "a", "b"));
+    println(format("[{:5}]", 42));
+    println(format("[{:<5}][{:>5}]", "x", "y"));
+    println(format("{:?}", "q"));
+    return 0;
+}

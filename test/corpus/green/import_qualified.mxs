@@ -1,0 +1,6 @@
+# qualified import: module last segment becomes the namespace
+import std.io;
+func main() -> int {
+    io.println("qualified");
+    return 0;
+}

@@ -39,7 +39,11 @@ cd tools/vscode-mxs && vsce package
 
 ## Notes
 
-- This is highlighting only. Diagnostics ("lint" — red squiggles on syntax errors) would wire a
-  `mxs check <file>` parse-only mode (not yet a driver subcommand) into VS Code diagnostics; the
-  parser already produces `name:line:col: syntax error: …` (see `src/frontend/parser.cpp`), so the
-  ground is there for a later pass.
+- This extension is highlighting only. Diagnostics ("lint" — squiggles on syntax errors) are now
+  available via the driver: `mxs check <file>` runs a parse-only pass, printing
+  `file:line:col: syntax error: …` to stderr (see `src/frontend/parser.cpp`) and exiting non-zero
+  on the first error, with no codegen/JIT noise. The repo's `.vscode/tasks.json` wires this into
+  the VS Code **Problems** panel through a `problemMatcher` (`owner: "mxs"`): run it on the active
+  file with `Ctrl+Shift+B` ("Run Build Task") to populate the panel.
+- True on-save red-squiggles (without manually running a task) would need a small VS Code extension
+  activation event or a language server (LSP) for `.mxs` — a future step.

@@ -1,0 +1,11 @@
+# nested-block shadowing: inner `let a` shadows the outer, restored on block exit
+import std.io.{println};
+func main() -> int {
+    let a = 1;
+    if (true) {
+        let a = 2;
+        println(a);
+    }
+    println(a);
+    return 0;
+}

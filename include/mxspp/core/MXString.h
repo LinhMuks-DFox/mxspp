@@ -27,8 +27,10 @@ namespace mxs::builtin {
         [[nodiscard]] auto empty() const -> bool { return value_.empty(); }
 
         // --- MXObject overrides ---
-        [[nodiscard]] auto repr() const
-                -> core::repr_t override;// the raw bytes (for print)
+        // repr() = the quoted + escaped developer form (`"hi\n"`); str() = the raw bytes (for
+        // print). progress12 D-STR-REPR — strings are the one type whose two forms differ.
+        [[nodiscard]] auto repr() const -> core::repr_t override;
+        [[nodiscard]] auto str() const -> core::repr_t override;
         [[nodiscard]] auto is_truthy() const -> bool override { return !value_.empty(); }
         auto equals(MXObjectConstBorrow other) -> bool override;
         [[nodiscard]] auto get_hash_code() const -> MXHashCode_t override;

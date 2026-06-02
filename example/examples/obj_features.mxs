@@ -8,6 +8,8 @@
 #   true
 #   true
 
+import std.io.{println};
+
 func main() -> int {
     let greeting = "hello, " + "world";
     println(greeting);

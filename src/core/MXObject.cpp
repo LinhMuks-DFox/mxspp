@@ -54,11 +54,19 @@ namespace mxs::core {
     }
 
     auto MXObject::repr() const -> repr_t { return this->get_rtti().name; }
+    auto MXObject::str() const -> repr_t { return this->repr(); }
     auto MXObject::is_truthy() const -> bool { return true; }
 
     auto MXObject::retain() const -> void { ++refcount_; }
     auto MXObject::release() const -> void {
-        if (--refcount_ == 0) delete this;
+        // Once destruction has begun, ignore further releases: the destructor body (and the
+        // teardown of `self`'s binding cell) performs retain/release on `this`, which would
+        // otherwise hit zero again and re-enter `delete`, recursing infinitely.
+        if (destroying_) return;
+        if (--refcount_ == 0) {
+            destroying_ = true;
+            delete this;
+        }
     }
     auto MXObject::use_count() const -> std::size_t { return refcount_; }
 }
@@ -77,11 +85,12 @@ std::int64_t mxs_object_truthy(const mxs::core::MXObject *o) {
     return (o && o->is_truthy()) ? 1 : 0;
 }
 
-// Polymorphic print over any MXObject via its virtual repr() (one entry point, any type).
+// Polymorphic single-object print via the human form str() (progress12 D-STR-REPR). The variadic
+// print/println the language binds live in MXFormat.cpp; these stay for direct single-value use.
 void mxs_print_object(const mxs::core::MXObject *o) {
-    std::fprintf(stdout, "%s", o ? o->repr().c_str() : "nil");
+    std::fprintf(stdout, "%s", o ? o->str().c_str() : "nil");
 }
 void mxs_println_object(const mxs::core::MXObject *o) {
-    std::fprintf(stdout, "%s\n", o ? o->repr().c_str() : "nil");
+    std::fprintf(stdout, "%s\n", o ? o->str().c_str() : "nil");
 }
 }

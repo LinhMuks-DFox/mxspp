@@ -1,0 +1,34 @@
+# OOP v1 (run-core, progress11): operator overloading. `a + b` routes through the user
+# `operator+` (via the reserved vtable slot), and `match` discriminates the result by class type.
+# `a` is `let mut` so it can be reassigned before the final `a + b`.
+# Expected output:
+#   4
+#   6
+#   Vec2(x=8, y=9)
+import std.io.{println};
+
+class Vec2 {
+    Vec2(x: int, y: int) {
+        self.x = x;
+        self.y = y;
+    }
+    operator+(other: Vec2) -> Vec2 {
+        return Vec2(self.x + other.x, self.y + other.y);
+    }
+    let x: int;
+    let y: int;
+}
+
+func main() -> int {
+    let mut a = Vec2(1, 2);
+    let b = Vec2(3, 4);
+    let c = a + b;
+    a = Vec2(5, 5);
+    println(c.x);  # 4
+    println(c.y);  # 6
+    println(match (a + b) {
+        case v: Vec2 => v
+        case e: Error => "err"
+    });
+    return 0;
+}

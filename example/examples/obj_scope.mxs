@@ -7,6 +7,8 @@
 #   2
 #   100
 
+import std.io.{println};
+
 func main() -> int {
     let i = 100;
     for i in 0..3 {

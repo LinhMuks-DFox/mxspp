@@ -1,5 +1,7 @@
 # Cross-type dynamic dispatch on the real object model (run-core).
 # Expected: hello world / 3.5 / 2.5 / 2 / true / false
+import std.io.{println};
+
 func main() -> int {
     println("hello " + "world");   # string concat
     println(1.5 + 2);              # int promotes to float -> 3.5

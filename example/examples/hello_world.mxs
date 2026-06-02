@@ -4,6 +4,8 @@
 # import std.io as io;
 # static let println = io.println;
 
+import std.io.{print};
+
 func hello_world() -> nil {
     print("Hello, World!");
 }

@@ -16,6 +16,9 @@ namespace mxs::core {
     public:
         auto register_object(const MXObject *const obj) -> void;
         auto unregister_object(const MXObject *const obj) -> void;
+        // Number of live MXObjects currently tracked. Used by tests to assert that a scope leaves
+        // no leaked / double-freed objects (the ARC verification lever, progress11).
+        [[nodiscard]] auto population_count() const -> std::size_t;
 
         static auto get_manager() -> MXPopulationManager &;
         static auto get_rtti() -> MXRuntimeTypeInfo &;

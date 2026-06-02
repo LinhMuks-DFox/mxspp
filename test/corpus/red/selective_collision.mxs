@@ -1,0 +1,4 @@
+# importing the same unqualified name twice collides
+import std.io.{println};
+import std.io.{println};
+func main() -> int { println(1); return 0; }

@@ -86,9 +86,19 @@ include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
+# Compiler used to emit the runtime/core LLVM bitcode (runtime.bc / core.bc). It MUST emit
+# bitcode the JIT's LLVM (found above) can read — i.e. its LLVM major version must be <= the
+# JIT's. Defaults to the host C++ compiler; override with -DMXS_BC_CXX=<clangXX> when the host
+# compiler is newer than the linked LLVM (e.g. host clang 22 + vendored LLVM 20).
+set(MXS_BC_CXX "${CMAKE_CXX_COMPILER}" CACHE STRING
+    "C++ compiler used to emit LLVM bitcode (LLVM major version must be <= the JIT's LLVM)")
+message(STATUS "Bitcode emitter (MXS_BC_CXX): ${MXS_BC_CXX}")
+
 # 3. 使用 LLVM 提供的辅助函数，将所有需要的组件库名存入一个变量
+# `native` pulls the host target's codegen/asmprinter/MC (for AOT object emission, `mxs compile`);
+# `Linker` provides llvm::Linker (used to fold core.bc into the user module before emitting).
 llvm_map_components_to_libnames(MXS_LLVM_LIBRARIES
-    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader
+    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader Linker
 )
 
 # --- 寻找 PEGTL (保持不变, 但路径指向新的统一目录名) ---

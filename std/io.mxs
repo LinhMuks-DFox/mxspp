@@ -1,18 +1,23 @@
 # MXScript standard I/O — std.io
 #
 # Two layers (docs/type_system.md §8, docs/ffi.md):
-#   1. @@foreign bindings to the runtime fast-dispatch C-ABI (mxs_*).
-#   2. mxs-level wrappers that pick the stream (0=stdout, 1=stderr, 2=stdlog).
+#   1. @@foreign bindings to the runtime polymorphic C-ABI (mxs_*), implemented in core.bc.
+#   2. (this module is a thin layer-1 surface — no mxs-level wrappers yet.)
 #
-# Bound generically via @@foreign — the compiler does NO per-function special-casing.
-# (Currently the driver auto-includes this as a prelude; once import resolution lands,
-# programs get it via `import std.io`.)
+# Bound generically via @@foreign — the compiler does NO per-function special-casing. Values are
+# real core::MXObject*; the stdio family binds to the polymorphic print/format over
+# MXObject::str()/repr(). print/println/format are variadic (progress12 D-VARARG): surplus args
+# are packed into an MXArrayList.
+#
+# Import-gated (progress13 D2): reach these only via `import std.io;` (qualified `io.println(...)`),
+# `import std.io as o;`, or `import std.io.{println, print, format, str, repr};` (unqualified).
+# Nothing here is in scope without an import.
 
-# ---- runtime fast-dispatch bindings (stream id + value) ----
-@@foreign(symbol_name="mxs_println_int") func __println_int(stream: int, x: int) -> nil;
-@@foreign(symbol_name="mxs_print_int")   func __print_int(stream: int, x: int) -> nil;
-
-# ---- mxs-level API ----
-func println(x: int) -> nil { __println_int(0, x); }
-func print(x: int) -> nil { __print_int(0, x); }
-func eprintln(x: int) -> nil { __println_int(1, x); }
+@@foreign(symbol_name="mxs_println")          func println(...args: any) -> nil;
+@@foreign(symbol_name="mxs_print")            func print(...args: any) -> nil;
+@@foreign(symbol_name="mxs_str")              func str(x: any) -> any;
+@@foreign(symbol_name="mxs_repr")             func repr(x: any) -> any;
+@@foreign(symbol_name="mxs_format")           func format(fmt: str, ...args: any) -> any;
+@@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
+@@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
+@@foreign(symbol_name="mxs_exit")             func exit(code: any) -> nil;

@@ -27,7 +27,41 @@ namespace mxs::builtin {
         return c < 0 ? -1 : c > 0 ? 1 : 0;
     }
 
-    auto MXString::repr() const -> core::repr_t { return value_; }
+    auto MXString::str() const -> core::repr_t { return value_; }
+
+    // Quoted + escaped form: round-trips the common escapes so a string is unambiguous inside a
+    // container / at the REPL / under format `{:?}` (progress12 D-STR-REPR).
+    auto MXString::repr() const -> core::repr_t {
+        std::string out;
+        out.reserve(value_.size() + 2);
+        out.push_back('"');
+        for (const char c : value_) {
+            switch (c) {
+                case '\\':
+                    out += "\\\\";
+                    break;
+                case '"':
+                    out += "\\\"";
+                    break;
+                case '\n':
+                    out += "\\n";
+                    break;
+                case '\t':
+                    out += "\\t";
+                    break;
+                case '\r':
+                    out += "\\r";
+                    break;
+                case '\0':
+                    out += "\\0";
+                    break;
+                default:
+                    out.push_back(c);
+            }
+        }
+        out.push_back('"');
+        return out;
+    }
 
     auto MXString::equals(MXObjectConstBorrow other) -> bool {
         const auto *o = dynamic_cast<const MXString *>(other.get());
@@ -61,6 +95,11 @@ namespace {
 extern "C" {
 
 MXObject *mxs_str_new(const char *s) { return new MXString(s ? s : ""); }
+
+// str(x) / repr(x) builtins (progress12 D-STR-REPR): a fresh, owned (+1) MXString of the value's
+// human / developer form. Null → "nil". Polymorphic over any MXObject via its virtual str()/repr().
+MXObject *mxs_str(MXObject *o) { return new MXString(o ? o->str() : "nil"); }
+MXObject *mxs_repr(MXObject *o) { return new MXString(o ? o->repr() : "nil"); }
 
 MXObject *mxs_str_concat(MXObject *a, MXObject *b) {
     const MXString *sa = as_str(a), *sb = as_str(b);

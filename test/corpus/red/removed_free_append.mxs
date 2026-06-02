@@ -1,0 +1,3 @@
+# the free function `append` was removed (D4): it is a method now
+import std.io.{println};
+func main() -> int { let xs = [1, 2]; append(xs, 3); return 0; }

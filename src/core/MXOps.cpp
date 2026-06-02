@@ -1,7 +1,9 @@
 #include "mxspp/core/MXArrayList.h"
 #include "mxspp/core/MXBoolean.h"
+#include "mxspp/core/MXClassInfo.h"
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
+#include "mxspp/core/MXInstance.h"
 #include "mxspp/core/MXInteger.h"
 #include "mxspp/core/MXNil.h"
 #include "mxspp/core/MXObject.h"
@@ -23,8 +25,10 @@ namespace {
     using mxs::builtin::MXArrayList;
     using mxs::builtin::MXBoolean;
     using mxs::builtin::MXFloat;
+    using mxs::builtin::MXInstance;
     using mxs::builtin::MXInteger;
     using mxs::builtin::MXString;
+    using mxs::core::MXClassInfo;
     using mxs::core::MXError;
     using mxs::core::MXObject;
 
@@ -58,6 +62,35 @@ namespace {
         }
         return 2;// incomparable
     }
+    // Operator overloading dispatch (progress11). If `a` is a user instance whose class overrides
+    // the operator at `slot` (a non-null vtable entry), call the user operator. The user operator
+    // function has the shape `MXObject*(self, other)` (binary) / `MXObject*(self)` (unary). Returns
+    // nullptr when there is no override, so the builtin numeric/string logic runs instead.
+    // The user operator (emitted as a method) is callee-owned: its parameter bindings adopt and
+    // then release `self`/`other`. The mxs_op_* path, by contrast, only BORROWS its operands (the
+    // codegen caller releases them). So retain the operands across the user-operator call to keep
+    // those two conventions balanced (no double-release).
+    MXObject *user_binop(MXObject *a, MXObject *b, std::int64_t slot) {
+        const auto *inst = as<MXInstance>(a);
+        if (!inst) return nullptr;
+        const MXClassInfo *ci = inst->classinfo();
+        if (!ci || !ci->vtable || slot >= ci->vtable_len) return nullptr;
+        void *fn = ci->vtable[slot];
+        if (!fn) return nullptr;
+        a->retain();
+        if (b) b->retain();
+        return reinterpret_cast<MXObject *(*) (MXObject *, MXObject *)>(fn)(a, b);
+    }
+    MXObject *user_unop(MXObject *a, std::int64_t slot) {
+        const auto *inst = as<MXInstance>(a);
+        if (!inst) return nullptr;
+        const MXClassInfo *ci = inst->classinfo();
+        if (!ci || !ci->vtable || slot >= ci->vtable_len) return nullptr;
+        void *fn = ci->vtable[slot];
+        if (!fn) return nullptr;
+        a->retain();
+        return reinterpret_cast<MXObject *(*) (MXObject *)>(fn)(a);
+    }
     bool structurally_equal(const MXObject *a, const MXObject *b) {
         if (const auto *ia = as<MXInteger>(a))
             if (const auto *ib = as<MXInteger>(b)) return ia->cmp(*ib) == 0;
@@ -74,6 +107,7 @@ namespace {
 extern "C" {
 
 MXObject *mxs_op_add(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_ADD)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->add(*ib).release();
     if (const auto *sa = as<MXString>(a))
@@ -82,18 +116,21 @@ MXObject *mxs_op_add(MXObject *a, MXObject *b) {
     return type_err("+");
 }
 MXObject *mxs_op_sub(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_SUB)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->sub(*ib).release();
     if (is_num(a) && is_num(b)) return new MXFloat(to_d(a) - to_d(b));
     return type_err("-");
 }
 MXObject *mxs_op_mul(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_MUL)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->mul(*ib).release();
     if (is_num(a) && is_num(b)) return new MXFloat(to_d(a) * to_d(b));
     return type_err("*");
 }
 MXObject *mxs_op_div(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_DIV)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->div(*ib).release();
     if (is_num(a) && is_num(b)) {
@@ -104,6 +141,7 @@ MXObject *mxs_op_div(MXObject *a, MXObject *b) {
     return type_err("/");
 }
 MXObject *mxs_op_mod(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_MOD)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->mod(*ib).release();
     if (is_num(a) && is_num(b)) {
@@ -114,38 +152,49 @@ MXObject *mxs_op_mod(MXObject *a, MXObject *b) {
     return type_err("%");
 }
 MXObject *mxs_op_pow(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_POW)) return r;
     if (const auto *ia = as<MXInteger>(a))
         if (const auto *ib = as<MXInteger>(b)) return ia->pow(*ib).release();
     if (is_num(a) && is_num(b)) return new MXFloat(std::pow(to_d(a), to_d(b)));
     return type_err("**");
 }
 MXObject *mxs_op_neg(MXObject *a) {
+    if (MXObject *r = user_unop(a, mxs::core::MX_SLOT_OP_NEG)) return r;
     if (const auto *ia = as<MXInteger>(a)) return ia->neg().release();
     if (const auto *fa = as<MXFloat>(a)) return new MXFloat(-fa->value());
     return type_err("unary -");
 }
-MXObject *mxs_op_not(MXObject *a) { return new MXBoolean(!(a && a->is_truthy())); }
+MXObject *mxs_op_not(MXObject *a) {
+    if (MXObject *r = user_unop(a, mxs::core::MX_SLOT_OP_NOT)) return r;
+    return new MXBoolean(!(a && a->is_truthy()));
+}
 
 MXObject *mxs_op_lt(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_LT)) return r;
     const int c = order(a, b);
     return c == 2 ? type_err("<") : new MXBoolean(c < 0);
 }
 MXObject *mxs_op_le(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_LE)) return r;
     const int c = order(a, b);
     return c == 2 ? type_err("<=") : new MXBoolean(c <= 0);
 }
 MXObject *mxs_op_gt(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_GT)) return r;
     const int c = order(a, b);
     return c == 2 ? type_err(">") : new MXBoolean(c > 0);
 }
 MXObject *mxs_op_ge(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_GE)) return r;
     const int c = order(a, b);
     return c == 2 ? type_err(">=") : new MXBoolean(c >= 0);
 }
 MXObject *mxs_op_eq(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_EQ)) return r;
     return new MXBoolean(structurally_equal(a, b));
 }
 MXObject *mxs_op_ne(MXObject *a, MXObject *b) {
+    if (MXObject *r = user_binop(a, b, mxs::core::MX_SLOT_OP_NE)) return r;
     return new MXBoolean(!structurally_equal(a, b));
 }
 
@@ -164,7 +213,10 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     if (t == "nil" || t == "Nil") return as<mxs::builtin::MXNil>(o) != nullptr;
     if (t == "ArrayList" || t == "List")
         return as<mxs::builtin::MXArrayList>(o) != nullptr;
-    return o->get_rtti().name == t ? 1 : 0;// user/class types: match by RTTI name
+    // User class instances: match by the instance's class name (its MXClassInfo->name), not the
+    // C++ RTTI name (which is the shared "MXInstance"). This is how `case x: Point =>` works.
+    if (const auto *inst = as<MXInstance>(o)) return inst->class_name() == t ? 1 : 0;
+    return o->get_rtti().name == t ? 1 : 0;// other user/class types: match by RTTI name
 }
 
 // Generic length: ArrayList element count or String byte length, as an MXInteger. Used by
@@ -184,7 +236,9 @@ MXObject *mxs_index_get(MXObject *o, MXObject *idx) {
     const std::int64_t i = ii->to_i64(ok);
     if (const auto *l = as<MXArrayList>(o)) {
         MXObject *e = l->get(i);
-        return e ? e : new MXError("IndexError", "list index out of range");
+        if (!e) return new MXError("IndexError", "list index out of range");
+        e->retain();// accessor returns +1 (ARC)
+        return e;
     }
     if (const auto *s = as<MXString>(o)) {
         const std::string &v = s->value();
@@ -199,11 +253,53 @@ MXObject *mxs_index_get(MXObject *o, MXObject *idx) {
 // objects have no built-in attributes yet (full member/method dispatch waits on OOP) -> nil.
 MXObject *mxs_get_attr(const MXObject *o, const char *name) {
     const std::string n = name ? name : "";
+    // User class instance: return the named field, retained (+1, the ARC accessor rule). An unset
+    // field reads as nil.
+    if (const auto *inst = as<MXInstance>(o)) {
+        if (MXObject *f = inst->get_field(n)) {
+            f->retain();
+            return f;
+        }
+        return new mxs::builtin::MXNil();
+    }
     if (const auto *e = as<MXError>(o)) {
         if (n == "msg" || n == "message") return new MXString(e->message());
         if (n == "type" || n == "kind") return new MXString(e->error_type());
     }
     return new mxs::builtin::MXNil();
+}
+
+// --- User class instances (progress11 OOP v1) ---
+
+// Construct a fresh instance of the class described by `ci` (rc 1, caller-owned). The constructor
+// (emitted by codegen) then binds `self` to this and runs the ctor body (mxs_set_attr per field).
+MXObject *mxs_instance_new(const MXClassInfo *ci) { return new MXInstance(ci); }
+
+// Member assignment `obj.name = v` / `self.name = v`. The instance ADOPTS `v` (takes its +1); the
+// previous value of the field is released. Codegen does NOT release `v` at the call site (the field
+// adopts it). If `o` is not an instance the field never adopts it, so we release `v` here to keep
+// the +1 balanced (otherwise it would leak).
+void mxs_set_attr(MXObject *o, const char *name, MXObject *v) {
+    if (auto *inst = dynamic_cast<MXInstance *>(o)) inst->set_field(name ? name : "", v);
+    else if (v)
+        v->release();
+}
+
+// The instance's class descriptor (for operator routing / dispatch); nullptr for non-instances.
+const MXClassInfo *mxs_object_classinfo(const MXObject *o) {
+    if (const auto *inst = as<MXInstance>(o)) return inst->classinfo();
+    return nullptr;
+}
+
+// A method call `recv.name(...)` whose name is a user-class selector but whose receiver is not an
+// instance (its classinfo is null). Returns a fresh TypeError value (the match-based error model)
+// rather than dereferencing a null vtable. Built-in method names (len/append/get) are routed to
+// their runtime symbols by codegen before reaching here; this covers a user-only method name
+// invoked on a non-instance receiver. The receiver is borrowed (codegen releases it).
+MXObject *mxs_method_missing(const MXObject *recv, const char *name) {
+    (void) recv;
+    return new MXError("TypeError",
+                       std::string("object has no method '") + (name ? name : "") + "'");
 }
 
 // `raise` / `exit` as functions (progress06: `raise` is a special form of `exit` — exit with

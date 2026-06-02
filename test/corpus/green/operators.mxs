@@ -1,0 +1,9 @@
+# arithmetic incl. the ** power operator (left-assoc) and div/mod
+import std.io.{println};
+func main() -> int {
+    println(2 ** 10);
+    println(2 ** 3 ** 2);
+    println(7 / 2);
+    println(7 % 3);
+    return 0;
+}

@@ -1,0 +1,46 @@
+// stdio v1 (progress12): variadic print, str/repr, and `{}` format.
+// Run:  build/bin/mxs run-core example/examples/format_basics.mxs
+//
+// Expected output:
+//   a b 1 true
+//   ["hi", "yo"]
+//   1 + 2 = 3
+//   a b a
+//   [      hi]
+//   [hi      ]
+//   [   hi   ]
+//   pi = 3.14
+//   "x"
+//   {} are braces
+//   "hi"
+//   42
+
+import std.io.{println, print, format, str, repr};
+
+func main() -> int {
+    // print is variadic: args are space-joined and stringified via str() (no trailing newline).
+    print("a", "b", 1, true);
+    println();
+
+    // A list prints with quoted string elements (repr inside containers — the str/repr split).
+    println(["hi", "yo"]);
+
+    // format: `{}` positional, `{N}` indexed.
+    println(format("{} + {} = {}", 1, 2, 3));
+    println(format("{0} {1} {0}", "a", "b"));
+
+    // spec: alignment + width.
+    println(format("[{:>8}]", "hi"));
+    println(format("[{:<8}]", "hi"));
+    println(format("[{:^8}]", "hi"));
+
+    // float precision; `{:?}` selects the developer form (repr); `{{`/`}}` are literal braces.
+    println(format("pi = {:.2}", 3.14159));
+    println(format("{:?}", "x"));
+    println(format("{{}} are braces"));
+
+    // str / repr builtins.
+    println(repr("hi"));
+    println(str(42));
+    return 0;
+}

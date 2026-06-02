@@ -1,4 +1,5 @@
 #include "mxspp/backend/codegen.h"
+#include "mxspp/frontend/imports.h"
 #include "mxspp/frontend/parser.h"
 #include "mxspp/jit/jit.h"
 #include "mxspp/shell/shell.h"
@@ -16,7 +17,6 @@
 
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -27,47 +27,16 @@
 #endif
 
 namespace {
-    // The std prelude (std.io), auto-included on codegen paths so programs can call
-    // println(...) etc. without a manual @@foreign line. Mirrors std/io.mxs; once import
-    // resolution lands this is read from the file instead. Parsed as its own unit so user
-    // source line numbers stay accurate for diagnostics.
-    constexpr const char *kPrelude = R"MXS(
-@@foreign(symbol_name="mxs_println_int") func __println_int(stream: int, x: int) -> nil;
-@@foreign(symbol_name="mxs_print_int")   func __print_int(stream: int, x: int) -> nil;
-func println(x: int) -> nil { __println_int(0, x); }
-func print(x: int) -> nil { __print_int(0, x); }
-func eprintln(x: int) -> nil { __println_int(1, x); }
-)MXS";
-
-    // The object-mode prelude. In object mode every value is a boxed MXObject*, so the print
-    // family binds DIRECTLY (via generic @@foreign — no per-function codegen) to the runtime's
-    // polymorphic print symbols, each taking one MXObject*. `any` is the dynamic object type
-    // (every object-mode parameter lowers to a boxed ptr regardless of annotation).
-    constexpr const char *kObjPrelude = R"MXS(
-@@foreign(symbol_name="mxs_println_obj")  func println(x: any) -> nil;
-@@foreign(symbol_name="mxs_print_obj")    func print(x: any) -> nil;
-@@foreign(symbol_name="mxs_eprintln_obj") func eprintln(x: any) -> nil;
-@@foreign(symbol_name="mxs_eprint_obj")   func eprint(x: any) -> nil;
-)MXS";
-
-    // The new object-model prelude (progress09 ④). Values are real core::MXObject*; the print
-    // family binds via generic @@foreign to the polymorphic print over MXObject::repr() (defined
-    // in core.bc). No per-function hardcoding (D3).
-    constexpr const char *kCorePrelude = R"MXS(
-@@foreign(symbol_name="mxs_println_object")   func println(x: any) -> nil;
-@@foreign(symbol_name="mxs_print_object")     func print(x: any) -> nil;
-@@foreign(symbol_name="mxs_len")              func len(xs: any) -> any;
-@@foreign(symbol_name="mxs_arraylist_append") func append(xs: any, v: any) -> nil;
-@@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
-@@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
-@@foreign(symbol_name="mxs_exit")             func exit(code: any) -> nil;
-)MXS";
+    // The legacy hardcoded stdlib prelude string is GONE (progress13 D2): the stdlib is now
+    // import-gated — nothing is in scope without an `import`. Its bindings live in std/io.mxs
+    // (println/print/str/repr/format/arraylist/raise/exit) + std/time.mxs, loaded by the import
+    // resolver. There are no implicit globals.
 
     std::string read_file(const std::string &path, bool &ok) {
         std::ifstream f(path);
         if (!f) {
             ok = false;
-            return {};
+            return { };
         }
         std::stringstream ss;
         ss << f.rdbuf();
@@ -75,7 +44,7 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
         return ss.str();
     }
 
-    // Locate a bitcode file (runtime.bc / core.bc): next to the executable first, then a few
+    // Locate a bitcode file (core.bc): next to the executable first, then a few
     // common build-relative locations.
     std::string find_bc(const std::string &name) {
 #if defined(__linux__)
@@ -103,12 +72,48 @@ func eprintln(x: int) -> nil { __println_int(1, x); }
         }
 #endif
         for (const std::string base :
-             { std::string{}, std::string{ "build/bin/" }, std::string{ "bin/" } })
+             { std::string{ }, std::string{ "build/bin/" }, std::string{ "bin/" } })
             if (std::ifstream(base + name)) return base + name;
         return "";
     }
-    std::string runtime_bc_path() { return find_bc("runtime.bc"); }
     std::string core_bc_path() { return find_bc("core.bc"); }
+
+    // Directory containing the running executable (empty if undiscoverable). The std modules are
+    // copied next to the binary at build time (src/CMakeLists), so this is the robust install path.
+    std::string exe_dir() {
+#if defined(__linux__)
+        char buf[4096];
+        const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = '\0';
+            std::string p(buf);
+            const auto slash = p.find_last_of('/');
+            if (slash != std::string::npos) return p.substr(0, slash);
+        }
+#elif defined(__APPLE__)
+        char buf[4096];
+        std::uint32_t bufsize = sizeof(buf);
+        if (_NSGetExecutablePath(buf, &bufsize) == 0) {
+            std::string p(buf);
+            const auto slash = p.find_last_of('/');
+            if (slash != std::string::npos) return p.substr(0, slash);
+        }
+#endif
+        return "";
+    }
+
+    // The module search path for `import` (progress13 D2). A module `std.io` is sought at
+    // `<dir>/std/io.mxs` for each dir in order: the CWD first (dev runs from the repo root, where
+    // `std/` lives), then the executable's directory (std/ is copied beside the binary at build
+    // time), then build-relative fallbacks. First hit wins.
+    std::vector<std::string> std_search_dirs() {
+        std::vector<std::string> dirs;
+        dirs.emplace_back("");// CWD-relative: ./std/<path>.mxs
+        if (const std::string ed = exe_dir(); !ed.empty()) dirs.push_back(ed);
+        dirs.emplace_back("build/bin");
+        dirs.emplace_back("bin");
+        return dirs;
+    }
 }// namespace
 
 int main(int argc, char **argv) {
@@ -116,37 +121,7 @@ int main(int argc, char **argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
 
     if (args.empty() || (args.size() == 1 && args[0] == "shell"))
-        return mxs::shell::repl(kPrelude, runtime_bc_path());
-
-    // Object-mode: values are boxed MXObject*; arithmetic, comparisons and the print family
-    // all go through dynamic dispatch / generic @@foreign bindings (kObjPrelude).
-    if (args.size() == 2 && args[0] == "run-obj") {
-        bool ok = false;
-        const std::string source = read_file(args[1], ok);
-        if (!ok) {
-            std::cerr << "error: cannot open " << args[1] << "\n";
-            return 1;
-        }
-        auto tu = parser::parse_to_ast(source, args[1]);
-        if (!tu) {
-            std::cerr << "error: failed to parse " << args[1] << "\n";
-            return 1;
-        }
-        // Prepend the object-mode std prelude (parsed separately so user line numbers stay
-        // accurate). println/print/... resolve through it like any other call — no hardcoding.
-        if (auto prelude = parser::parse_to_ast(kObjPrelude, "<obj-prelude>")) {
-            tu->statements.insert(tu->statements.begin(),
-                                  std::make_move_iterator(prelude->statements.begin()),
-                                  std::make_move_iterator(prelude->statements.end()));
-        }
-        auto context = std::make_unique<llvm::LLVMContext>();
-        auto module = mxs::backend::codegen::compile_obj(*tu, *context, args[1]);
-        if (!module) {
-            std::cerr << "error: object-mode codegen failed for " << args[1] << "\n";
-            return 1;
-        }
-        return mxs::jit::run(std::move(module), std::move(context), runtime_bc_path());
-    }
+        return mxs::shell::repl(std_search_dirs(), core_bc_path());
 
     // New object model (progress09 ④): values are real core::MXObject*; arithmetic emits the
     // typed core ABI (mxs_int_*), linked from core.bc. Seed slice (int arithmetic + print).
@@ -162,13 +137,15 @@ int main(int argc, char **argv) {
             std::cerr << "error: failed to parse " << args[1] << "\n";
             return 1;
         }
-        if (auto prelude = parser::parse_to_ast(kCorePrelude, "<core-prelude>")) {
-            tu->statements.insert(tu->statements.begin(),
-                                  std::make_move_iterator(prelude->statements.begin()),
-                                  std::make_move_iterator(prelude->statements.end()));
-        }
+        // Resolve + load + merge `import` modules (progress13 D2). After this the TU holds no
+        // Import nodes; qualified-import namespaces flow to codegen for `ns.fn(...)` resolution.
+        // There is no implicit prelude — a program reaches stdlib names only through its imports.
+        auto imp =
+                mxs::frontend::imports::resolve_imports(*tu, args[1], std_search_dirs());
+        if (!imp.ok) return 1;
         auto context = std::make_unique<llvm::LLVMContext>();
-        auto module = mxs::backend::codegen::compile_core(*tu, *context, args[1]);
+        auto module = mxs::backend::codegen::compile_core(*tu, *context, args[1],
+                                                          imp.namespaces);
         if (!module) {
             std::cerr << "error: core codegen failed for " << args[1] << "\n";
             return 1;
@@ -184,8 +161,28 @@ int main(int argc, char **argv) {
         std::_Exit(rc);
     }
 
-    if (args.size() == 2 &&
-        (args[0] == "--dump-ast" || args[0] == "--emit-ir" || args[0] == "run")) {
+    // Parse-only lint: report syntax errors and exit non-zero on failure. The parser already
+    // prints `file:line:col: syntax error: …` diagnostics to stderr, so we add nothing here.
+    if (args.size() == 2 && args[0] == "check") {
+        bool ok = false;
+        const std::string source = read_file(args[1], ok);
+        if (!ok) {
+            std::cerr << "error: cannot open " << args[1] << "\n";
+            return 1;
+        }
+        auto tu = parser::parse_to_ast(source, args[1]);
+        if (!tu) return 1;
+        // Validate that every `import` resolves + parses (loads the std modules) as part of the
+        // lint, mirroring run-core. Import-gating means a missing/typo'd module is an error here.
+        auto imp =
+                mxs::frontend::imports::resolve_imports(*tu, args[1], std_search_dirs());
+        if (!imp.ok) return 1;
+        std::cout << "ok\n";
+        return 0;
+    }
+
+    // Parse-only: print the AST. Does not run codegen.
+    if (args.size() == 2 && args[0] == "--dump-ast") {
         bool ok = false;
         const std::string source = read_file(args[1], ok);
         if (!ok) {
@@ -197,37 +194,15 @@ int main(int argc, char **argv) {
             std::cerr << "error: failed to parse " << args[1] << "\n";
             return 1;
         }
-
-        if (args[0] == "--dump-ast") {
-            parser::dump_ast(*tu, std::cout);
-            return 0;
-        }
-
-        // Prepend the std prelude (parsed separately so user line numbers are unaffected).
-        if (auto prelude = parser::parse_to_ast(kPrelude, "<prelude>")) {
-            tu->statements.insert(tu->statements.begin(),
-                                  std::make_move_iterator(prelude->statements.begin()),
-                                  std::make_move_iterator(prelude->statements.end()));
-        }
-
-        auto context = std::make_unique<llvm::LLVMContext>();
-        auto module = mxs::backend::codegen::compile(*tu, *context, args[1]);
-        if (!module) {
-            std::cerr << "error: codegen failed for " << args[1] << "\n";
-            return 1;
-        }
-
-        if (args[0] == "--emit-ir") {
-            module->print(llvm::outs(), nullptr);
-            return 0;
-        }
-        return mxs::jit::run(std::move(module), std::move(context), runtime_bc_path());
+        parser::dump_ast(*tu, std::cout);
+        return 0;
     }
 
     std::cout << "mxs (MXScript)\n"
               << "  usage: mxs            (or: mxs shell)  # interactive REPL\n"
-              << "         mxs run        <file.mxs>       # JIT-compile and run main()\n"
-              << "         mxs --emit-ir  <file.mxs>       # lower the AST to LLVM IR\n"
+              << "         mxs run-core   <file.mxs>       # JIT-compile and run main()\n"
+              << "         mxs check      <file.mxs>       # parse-only lint (syntax "
+                 "errors)\n"
               << "         mxs --dump-ast <file.mxs>       # parse and print the AST\n";
     return 0;
 }

@@ -82,13 +82,14 @@ namespace mxs::frontend::parser {
                     g::return_stmt, g::expression_stmt, g::block, g::if_stmt,
                     g::for_in_stmt, g::loop_stmt, g::until_stmt, g::do_until_stmt,
                     g::break_stmt, g::continue_stmt, g::assert_stmt, g::defer_stmt,
-                    g::func_def, g::func_sig, g::param, g::call_args, g::class_def,
-                    g::field_def_class, g::constructor_def, g::destructor_def,
-                    g::method_def, g::operator_def, g::static_member, g::interface_def,
-                    g::interface_member, g::enum_def, g::enum_variant, g::type_def,
-                    g::field_decl, g::annotation, g::annotation_arg, g::match_expr,
-                    g::case_clause, g::bind_pattern, g::wildcard_pattern, g::block_expr,
-                    g::list_literal, g::index_op, g::member_op>,
+                    g::func_def, g::func_sig, g::param, g::rest_param, g::call_args,
+                    g::class_def, g::field_def_class, g::constructor_def,
+                    g::destructor_def, g::method_def, g::operator_def, g::static_member,
+                    g::interface_def, g::interface_member, g::enum_def, g::enum_variant,
+                    g::type_def, g::field_decl, g::annotation, g::annotation_arg,
+                    g::match_expr, g::case_clause, g::bind_pattern, g::wildcard_pattern,
+                    g::block_expr, g::list_literal, g::index_op, g::member_op,
+                    g::import_stmt, g::fqdn, g::import_selector, g::import_alias>,
             // NOTE: fold on `expression`, not `assign_expr` — `struct expression :
             // assign_expr {}` means the matched rule is `expression`, so assignment is
             // only foldable there.
@@ -108,7 +109,7 @@ namespace mxs::frontend::parser {
     }
 
     static std::string content_of(const Node &n) {
-        return n.has_content() ? n.string() : std::string{};
+        return n.has_content() ? n.string() : std::string{ };
     }
 
     static std::string unquote(const std::string &s) {
@@ -139,8 +140,14 @@ namespace mxs::frontend::parser {
             const Node &c = *n.children[i];
             if (c.is_type<g::call_args>()) {
                 auto call = mk<ast::FunctionCall>();
-                if (auto *id = dynamic_cast<ast::Identifier *>(base.get()))
+                if (auto *mem = dynamic_cast<ast::MemberExpr *>(base.get())) {
+                    // Method call `recv.m(args)`: keep the receiver + method name (a bare
+                    // FunctionCall would otherwise drop both — the old "Call self" gotcha).
+                    call->name = mem->name;
+                    call->receiver = std::move(mem->target);
+                } else if (auto *id = dynamic_cast<ast::Identifier *>(base.get())) {
                     call->name = id->name;
+                }
                 for (const auto &a : c.children) call->args.push_back(to_expr(*a));
                 base = std::move(call);
             } else if (c.is_type<g::index_op>()) {
@@ -283,6 +290,19 @@ namespace mxs::frontend::parser {
     static void collect_params(const Node &container,
                                std::vector<std::unique_ptr<ast::Parameter>> &out) {
         for (const auto &c : container.children) {
+            // A variadic rest parameter `...name: type` (progress12 D-VARARG): a single name,
+            // flagged isRest. The grammar already guarantees it is last in the list.
+            if (c->is_type<g::rest_param>()) {
+                auto p = mk<ast::Parameter>();
+                p->isRest = true;
+                for (const auto &pc : c->children) {
+                    if (pc->is_type<g::identifier>()) p->name = content_of(*pc);
+                    else if (pc->is_type<g::type_spec>())
+                        p->typeName = content_of(*pc);
+                }
+                out.push_back(std::move(p));
+                continue;
+            }
             if (!c->is_type<g::param>()) continue;
             std::string ty;
             std::vector<std::string> names;
@@ -451,6 +471,29 @@ namespace mxs::frontend::parser {
         return e;
     }
 
+    // An `import` statement (progress13 D2). Children: an `fqdn` (its identifier children are the
+    // path segments) followed by an optional tail — `import_selector` (its `identifier_list`'s
+    // children are the unqualified names) or `import_alias` (its `identifier` is the new namespace).
+    static std::unique_ptr<ast::MXASTNode> to_import(const Node &n) {
+        auto im = mk<ast::Import>();
+        for (const auto &c : n.children) {
+            if (c->is_type<g::fqdn>()) {
+                for (const auto &seg : c->children) im->path.push_back(content_of(*seg));
+            } else if (c->is_type<g::import_selector>()) {
+                std::vector<std::string> names;
+                for (const auto &gc : c->children)
+                    if (gc->is_type<g::identifier_list>())
+                        for (const auto &id : gc->children)
+                            names.push_back(content_of(*id));
+                im->selected = std::move(names);
+            } else if (c->is_type<g::import_alias>()) {
+                for (const auto &gc : c->children)
+                    if (gc->is_type<g::identifier>()) im->alias = content_of(*gc);
+            }
+        }
+        return im;
+    }
+
     static std::unique_ptr<ast::MXASTNode> to_typedef(const Node &n) {
         auto t = mk<ast::TypeDef>();
         for (const auto &ch : n.children) {
@@ -610,7 +653,7 @@ namespace mxs::frontend::parser {
 
     std::unique_ptr<ast::TranslationUnit> parse_to_ast(std::string_view source,
                                                        std::string_view source_name) {
-        g_furthest = furthest_t{};// reset furthest-progress tracking for this parse
+        g_furthest = furthest_t{ };// reset furthest-progress tracking for this parse
         try {
             pegtl::memory_input<> in(source.data(), source.size(),
                                      std::string(source_name));
@@ -627,6 +670,11 @@ namespace mxs::frontend::parser {
             for (const auto &c : root->children) {
                 if (c->is_type<g::annotation>()) {
                     pending.push_back(parse_annotation(*c));
+                    continue;
+                }
+                if (c->is_type<g::import_stmt>()) {
+                    tu->statements.push_back(to_import(*c));
+                    pending.clear();
                     continue;
                 }
                 auto s = to_stmt(*c);
@@ -833,6 +881,19 @@ namespace mxs::frontend::parser {
             pad(os, depth);
             os << "Defer\n";
             if (df->body) dump(df->body.get(), os, depth + 1);
+        } else if (auto *im = dynamic_cast<const ast::Import *>(node)) {
+            pad(os, depth);
+            os << "Import";
+            for (std::size_t i = 0; i < im->path.size(); ++i)
+                os << (i ? "." : " ") << im->path[i];
+            if (im->alias) os << " as " << *im->alias;
+            if (im->selected) {
+                os << " .{";
+                for (std::size_t i = 0; i < im->selected->size(); ++i)
+                    os << (i ? ", " : "") << (*im->selected)[i];
+                os << "}";
+            }
+            os << "\n";
         } else if (auto *bo = dynamic_cast<const ast::BinaryOp *>(node)) {
             pad(os, depth);
             os << "BinaryOp '" << bo->op << "'\n";

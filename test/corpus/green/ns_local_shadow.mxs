@@ -1,0 +1,14 @@
+# Regression (progress14): a local variable shadows a same-named imported namespace; its method
+# calls route to the value, not the module.
+import std.io.{println};
+import std.io as io;
+class Box {
+    Box(v: int) { self.v = v; }
+    func get() -> int { return self.v; }
+    let v: int;
+}
+func main() -> int {
+    let io = Box(7);
+    println(io.get());       # local `io` shadows the `io` namespace -> method call -> 7
+    return 0;
+}

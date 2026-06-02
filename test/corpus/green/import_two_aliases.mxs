@@ -1,0 +1,8 @@
+# the SAME module imported under two distinct aliases (shared runtime symbol, deduped)
+import std.io as a;
+import std.io as b;
+func main() -> int {
+    a.println("a");
+    b.println("b");
+    return 0;
+}

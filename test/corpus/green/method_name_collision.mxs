@@ -1,0 +1,19 @@
+# Regression (progress14 CRITICAL): a user class method named like a built-in (`len`) must NOT
+# misroute a list/string built-in call into the user vtable (which would null-deref / SIGSEGV).
+# A user instance dispatches via vtable; a list/string falls back to the built-in symbol.
+import std.io.{println};
+class Widget {
+    Widget(n: int) { self.n = n; }
+    func len() -> int { return self.n * 100; }
+    let n: int;
+}
+func main() -> int {
+    let w = Widget(7);
+    println(w.len());        # vtable -> 700
+    let xs = [10, 20, 30];
+    println(xs.len());       # built-in fallback -> 3
+    xs.append(40);
+    println(xs.get(3));      # built-in fallback -> 40
+    println("hi".len());     # built-in fallback on a string -> 2
+    return 0;
+}

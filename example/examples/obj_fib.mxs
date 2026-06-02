@@ -1,6 +1,8 @@
 # Object-mode smoke test: recursion, comparison, arithmetic, and a returned object.
 # Run with:  mxs run-obj example/examples/obj_fib.mxs   ->   55
 
+import std.io.{println};
+
 func fib(n: int) -> int {
     if n <= 1 {
         return n;

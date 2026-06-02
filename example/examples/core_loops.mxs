@@ -1,4 +1,6 @@
 # Variables (MXLeftValue), loops, comparisons on the real object model (run-core).
+import std.io.{println};
+
 func main() -> int {
     let mut sum = 0;
     for i in 1..5 { sum = sum + i; }   # 1+2+3+4

@@ -1,22 +1,44 @@
 (* -------------------------------------------------
-   mxscript.ebnf   ―   ISO-14977 style (Version 1.0)
+   mxscript.ebnf   ―   ISO-14977 style (Version 2.0)
+   -------------------------------------------------
+   REFRESHED 2026-06-01 to match the IMPLEMENTED grammar in
+   include/mxspp/frontend/grammar.hpp. Version 1.0 was the original design and had
+   drifted; see docs/syntax.md (authoritative) §9 for a full list of the changes
+   (list literals, the `**` power operator, variadic `...rest` params, bodyless
+   `func … ;` declarations for @@foreign, and the removal of the `raise` expression).
+   It also folds in the import-module grammar (progress13 D2): qualified-by-default
+   `import std.io;` → `io.println(...)`, `as` to rename the namespace, and the selective
+   `import std.io.{name, …}` form that brings the listed names into scope unqualified. All three
+   forms are implemented and run end-to-end (resolver: src/frontend/imports.cpp).
+
+   NOTE: grammar.hpp is an ordered PEG; this EBNF cannot express ordered choice. Where
+   order matters (identifier tried last in primary_expr; float before integer; `**`
+   before `*`) docs/syntax.md is the precise reference.
    ------------------------------------------------- *)
 
 mxscript         = { top_level_decl } ;
 
 (* ---------- Top-level Declarations ---------- *)
 
-top_level_decl   = [ "export" ] , ( import_stmt | comment | binding_stmt | annotation, annotatable_decl | annotatable_decl ) ;
+top_level_decl   = [ "export" ] , ( import_stmt | binding_stmt | annotation, annotatable_decl | annotatable_decl ) ;
 
 annotatable_decl = func_def | class_def | interface_def | type_def | enum_def ;
 
-import_stmt      = "import" , fqdn , [ "as" , identifier ] , ";" ;
+import_stmt      = "import" , fqdn , [ import_tail ] , ";" ;
+(* No tail  => qualified access via the module's last fqdn segment: `import std.io;` -> io.println(...).
+   `as`        renames that namespace; `.{ … }` brings the listed names into scope UNQUALIFIED.
+   (progress13 D2; all three forms run end-to-end.) *)
+import_tail      = ( "." , "{" , identifier_list , "}" ) | ( "as" , identifier ) ;
 fqdn             = identifier , { "." , identifier } ;
+
+(* A top-level static/dynamic binding. *)
+binding_stmt     = ( "static" | "dynamic" ) , "let" , identifier , "=" , expression , ";" ;
 
 
 (* ---------- Definitions ---------- *)
 
-func_def         = "func" , identifier , [ generic_param ] , func_sig , block ;
+(* A function body is a block, OR a lone ";" for a bodyless declaration (the @@foreign FFI form). *)
+func_def         = "func" , identifier , [ generic_param ] , func_sig , ( block | ";" ) ;
 
 class_def        = "class" , identifier , [ generic_param ] , [ ":" , type_spec ] ,
                    "{" , { class_member } , "}" ;
@@ -34,12 +56,13 @@ enum_def         = "enum" , identifier , [ generic_param ] ,
 (* ---------- Components for Definitions ---------- *)
 
 (* Generic parameters like <T, U> *)
-generic_param    = "<" , identifier , { "," , identifier } , ">" ;
+generic_param    = "<" , identifier_list , ">" ;
 
-(* Function signature: (p1: T, p2: U) -> R *)
+(* Function signature: (p1: T, p2: U, ...rest: R) -> R *)
 func_sig         = "(" , [ param_list ] , ")" , [ "->" , type_spec ] ;
-param_list       = param , { "," , param } ;
+param_list       = ( param , { "," , param } , [ "," , rest_param ] ) | rest_param ;
 param            = identifier_list , ":" , type_spec , [ "=" , expression ] ;
+rest_param       = "..." , identifier , ":" , type_spec ; (* variadic; last param only, no default *)
 identifier_list  = identifier , { "," , identifier } ;
 
 (* Class members *)
@@ -49,7 +72,8 @@ field_def_class  = let_stmt ;
 constructor_def  = identifier , func_sig, [ ":" , identifier, call_args ], block ;
 destructor_def   = "~" , identifier, "(", ")", [ ":", "~", identifier ], block ;
 method_def       = [ "override" ] , "func" , identifier , [ generic_param ] , func_sig , block ;
-operator_def     = [ "override" ] , "operator" , ( "+" | "-" | "!" | "*" | "/" | "%" | "==" | "!=" | ">" | "<" | ">=" | "<=" | "+=" | "-=" | "*=" | "/=" ) , func_sig , block ;
+operator_def     = [ "override" ] , "operator" , op_symbol , func_sig , block ;
+op_symbol        = "+=" | "-=" | "*=" | "/=" | "==" | "!=" | "<=" | ">=" | "+" | "-" | "!" | "*" | "/" | "%" | "<" | ">" ;
 static_member    = "static" , ( method_def | field_def_class ) ;
 
 (* Interface members *)
@@ -57,6 +81,8 @@ interface_member = "func" , identifier , [ generic_param ] , func_sig , [ block 
 
 (* Enum variants *)
 enum_variant     = identifier , [ "(" , param_list , ")" ] ;
+
+field_decl       = identifier_list , ":" , type_spec , ";" ;
 
 
 (* ---------- Statements ---------- *)
@@ -66,7 +92,6 @@ block            = "{" , { statement } , "}" ;
 statement        = let_stmt
                  | control_stmt
                  | expression_stmt
-                 | comment
                  | assert_stmt
                  | defer_stmt
                  ;
@@ -74,9 +99,6 @@ statement        = let_stmt
 expression_stmt  = expression , ";" ;
 
 let_stmt         = "let" , [ "mut" ] , identifier_list , [ ":" , type_spec ] , [ "=" , expression ] , ";" ;
-
-binding_stmt     = ( "static" | "dynamic" ) , "let" , identifier ,
-                   "=" , expression , ";" ;
 
 control_stmt     = if_stmt
                  | for_in_stmt
@@ -109,18 +131,19 @@ defer_stmt       = "defer" , block ;
 (* ---------- Expressions ---------- *)
 
 expression       = assign_expr ;
-assign_expr      = logic_or_expr , [ assign_op , assign_expr ] ;
+assign_expr      = logic_or_expr , [ assign_op , expression ] ; (* right-associative *)
 assign_op        = "=" | "+=" | "-=" | "*=" | "/=" ;
 
 logic_or_expr    = logic_and_expr , { "||" , logic_and_expr } ;
 logic_and_expr   = equality_expr , { "&&" , equality_expr } ;
 equality_expr    = relational_expr , { ( "==" | "!=" ) , relational_expr } ;
 relational_expr  = range_expr , { ( ">" | "<" | ">=" | "<=" ) , range_expr } ;
-range_expr       = additive_expr, [ ".." , additive_expr ] ;
+range_expr       = additive_expr, { ".." , additive_expr } ;
 additive_expr    = multiplicative_expr , { ( "+" | "-" ) , multiplicative_expr } ;
-multiplicative_expr = unary_expr , { ( "*" | "/" | "%" ) , unary_expr } ;
+multiplicative_expr = power_expr , { ( "*" | "/" | "%" ) , power_expr } ;
+power_expr       = unary_expr , { "**" , unary_expr } ;  (* NEW vs v1: power operator *)
 
-unary_expr       = [ "!" | "+" | "-" ] , postfix_expr ; (* Add async/await here in the future *)
+unary_expr       = [ "!" | "+" | "-" ] , postfix_expr ;
 
 postfix_expr     = primary_expr , { postfix_op } ;
 postfix_op       = "." , identifier            (* Member access: a.b *)
@@ -132,44 +155,44 @@ postfix_op       = "." , identifier            (* Member access: a.b *)
 
 call_args        = "(" , [ arg_list ] , ")" ;
 arg_list         = argument , { "," , argument } ;
-argument         = expression | identifier , "=" , expression ;
+argument         = ( identifier , "=" , expression ) | expression ;
 
 primary_expr     = literal
-                 | identifier
+                 | list_literal                (* NEW vs v1: [a, b, c] *)
                  | "(" , expression , ")"
                  | block_expr
                  | match_expr
-                 | raise_expr
                  | lambda_expr
+                 | identifier                  (* tried LAST in the PEG: keywords win first *)
                  ;
+                 (* NOTE vs v1: the `raise` expression was removed (raise is a function now). *)
 
-raise_expr       = "raise" , expression ;
+list_literal     = "[" , [ expression , { "," , expression } ] , "]" ;
 lambda_expr      = func_sig , "=>" , ( expression | block ) ;
 
 block_expr       = "{" , { statement } , [ expression ] , "}" ;
 
 match_expr       = "match" , "(" , expression , ")" , "{" , { case_clause } , "}" ;
 case_clause      = "case" , pattern , "=>" , ( expression | block ) , [ "," ] ;
-pattern          = literal | identifier [ "(" , pattern_list , ")" ] | "(" , pattern_list , ")" | "_" ;
+pattern          = literal | bind_pattern | "_" | identifier [ "(" , pattern_list , ")" ] | "(" , pattern_list , ")" ;
+bind_pattern     = identifier , ":" , type_spec ; (* type-binding: case e: Error => ... *)
 pattern_list     = pattern , { "," , pattern } ;
 
 
 (* ---------- Annotations ---------- *)
 
 annotation       = "@@" , identifier , [ "(" , [ annotation_arg , { "," , annotation_arg } ] , ")" ] ;
-annotation_arg   = identifier , "=" , expression ; (* e.g. @@name(key=value) *)
+annotation_arg   = identifier , "=" , expression ; (* e.g. @@foreign(symbol_name="mxs_…") *)
 
 
 (* ---------- Primitives & Helpers ---------- *)
 
-literal          = ? "integer, float, string, boolean, or nil" ? ;
+literal          = float_literal | integer_literal | string_literal | bool_literal | nil_literal ;
 
 type_spec        = single_type , { "|" , single_type } ;
 single_type      = ( fqdn , [ generic_inst ] ) | func_type ;
 func_type        = "func" , "(" , [ type_spec , { "," , type_spec } ] , ")" , [ "->" , type_spec ] ;
 generic_inst     = "<" , type_spec , { "," , type_spec } , ">" ;
 
-field_decl       = identifier_list , ":" , type_spec , ";" ;
-
-(* Comments: handled by lexer. Nested multi-line comments are not supported. *)
-comment          = ? "Lexer-defined single or multi-line comment" ? ;
+(* Lexer-level. Line comments start with '#' or '//'; block comments are /* … */ (not nestable). *)
+comment          = ? "Lexer-defined single-line (# or //) or block (/* … */) comment" ? ;

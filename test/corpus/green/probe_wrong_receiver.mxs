@@ -1,0 +1,11 @@
+# Probe (progress14 §6, documented v1 behavior, no static receiver typing): a built-in method on a
+# wrong-typed receiver does NOT crash. `append` is a silent no-op; `len`/`get` yield a TypeError
+# VALUE (not raised). This pins the current behavior so a future change is caught.
+import std.io.{println};
+func main() -> int {
+    let n = 42;
+    n.append(1);             # silent no-op (mxs_arraylist_append: as_list fails)
+    println("after-append");
+    println(n.len());        # TypeError value (object has no length), not raised
+    return 0;
+}

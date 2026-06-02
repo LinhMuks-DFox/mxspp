@@ -1,0 +1,6 @@
+# alias import: `as` renames the namespace
+import std.io as o;
+func main() -> int {
+    o.println("aliased");
+    return 0;
+}

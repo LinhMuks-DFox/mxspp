@@ -1,0 +1,27 @@
+# OOP v1 (run-core, progress11): a data class with a constructor, fields, and a method
+# dispatched through the class vtable. Expected output:
+#   3
+#   4
+#   7
+import std.io.{println};
+
+class Point {
+private:
+    Point(x: int, y: int) {
+        self.x = x;
+        self.y = y;
+    }
+    func sum() -> int {
+        return self.x + self.y;
+    }
+    let x: int;
+    let y: int;
+}
+
+func main() -> int {
+    let p = Point(3, 4);
+    println(p.x);      # 3
+    println(p.y);      # 4
+    println(p.sum());  # 7  (method call via vtable dispatch)
+    return 0;
+}

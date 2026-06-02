@@ -1,0 +1,9 @@
+# let mut reassignment + compound assignment
+import std.io.{println};
+func main() -> int {
+    let mut a = 1;
+    a = 10;
+    a += 5;
+    println(a);
+    return 0;
+}

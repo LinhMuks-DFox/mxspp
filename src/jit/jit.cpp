@@ -1,18 +1,33 @@
 #include "mxspp/jit/jit.h"
 
+#include <llvm/Config/llvm-config.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/TargetParser/Triple.h>
 
 #include <iostream>
 
 namespace mxs::jit {
 
     namespace {
+        // A memory manager that skips .eh_frame registration. ORC/RTDyld otherwise hands the
+        // whole .eh_frame section to libc++'s libunwind `__register_frame`, which expects a
+        // single FDE per call and warns "bad fde: FDE is really a CIE" for every CIE it walks
+        // past. mxs JIT'd code uses the error-value model (no C++ exceptions unwind through JIT
+        // frames), so skipping registration is safe and silences the noise.
+        class NoEHFrameMemoryManager : public llvm::SectionMemoryManager {
+        public:
+            void registerEHFrames(uint8_t *, uint64_t, size_t) override { }
+            void deregisterEHFrames() override { }
+        };
+
         // Parse a bitcode/IR file (in its own context) and add it to the JIT. No-op if empty.
         void link_bitcode(llvm::orc::LLJIT &jit, const std::string &path,
                           const char *what) {
@@ -27,6 +42,8 @@ namespace mxs::jit {
             } else {
                 std::cerr << "warning: could not load " << what << " '" << path
                           << "'; some builtins will be unresolved\n";
+                std::cerr << "  parse error: " << err.getMessage().str() << " (line "
+                          << err.getLineNo() << ")\n";
             }
         }
     }// namespace
@@ -39,7 +56,17 @@ namespace mxs::jit {
         InitializeNativeTarget();
         InitializeNativeTargetAsmPrinter();
 
-        auto jitOrErr = orc::LLJITBuilder().create();
+        orc::LLJITBuilder builder;
+        // Use an RTDyld linking layer whose memory manager skips EH-frame registration
+        // (silences the libunwind "FDE is really a CIE" warnings; see NoEHFrameMemoryManager).
+        builder.setObjectLinkingLayerCreator(
+                [](orc::ExecutionSession &ES,
+                   const Triple &) -> Expected<std::unique_ptr<orc::ObjectLayer>> {
+                    return std::make_unique<orc::RTDyldObjectLinkingLayer>(ES, []() {
+                        return std::make_unique<NoEHFrameMemoryManager>();
+                    });
+                });
+        auto jitOrErr = builder.create();
         if (!jitOrErr) {
             logAllUnhandledErrors(jitOrErr.takeError(), errs(), "mxs jit: ");
             return 1;
@@ -63,7 +90,13 @@ namespace mxs::jit {
         // macOS Mach-O JIT). Stamp it with the JIT host's data layout + triple before adding, or
         // ORC rejects it ("Added modules have incompatible data layouts").
         module->setDataLayout(jit->getDataLayout());
+        // LLVM 21 changed Module::setTargetTriple to take a `Triple` (was a string). Guard so the
+        // source builds against both the canonical LLVM 20 (Docker) and a newer host LLVM (e.g. 22).
+#if LLVM_VERSION_MAJOR >= 21
+        module->setTargetTriple(jit->getTargetTriple());
+#else
         module->setTargetTriple(jit->getTargetTriple().str());
+#endif
 
         if (auto e = jit->addIRModule(
                     orc::ThreadSafeModule(std::move(module), std::move(context)))) {

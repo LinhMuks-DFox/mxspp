@@ -1,0 +1,31 @@
+# OOP v1 (run-core, progress11): deterministic destruction (ARC). When a bound object's scope
+# ends, its reference count hits zero and `~Class()` runs. Expected output:
+#   start
+#   inner-before
+#   ~Tag(2)        <- inner `b` destroyed at block end
+#   inner-after
+#   ~Tag(1)        <- `a` destroyed at function end (on return)
+import std.io.{println, print};
+
+class Tag {
+    Tag(id: int) {
+        self.id = id;
+    }
+    ~Tag() {
+        print("~Tag(");
+        print(self.id);
+        println(")");
+    }
+    let id: int;
+}
+
+func main() -> int {
+    println("start");
+    let a = Tag(1);
+    if true {
+        println("inner-before");
+        let b = Tag(2);
+        println("inner-after");
+    }
+    return 0;
+}

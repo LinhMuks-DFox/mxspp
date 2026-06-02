@@ -4,6 +4,8 @@
 #   5
 #   caught division error
 #   other
+import std.io.{println};
+
 func main() -> int {
     let ok = match (10 / 2) {
         case v: int => { println(v); v; }

@@ -1,0 +1,126 @@
+# =============================================================================
+# MXScript (mxs) — syntax reference / language exemplar
+#
+# Every construct here runs today:
+#     build/bin/mxs run-core example/examples/syntax_reference.mxs
+#
+# Comments start with '#'. A program's entry point is `func main() -> int`.
+# =============================================================================
+
+# ---- Functions: typed params, a return type, recursion -----------------------
+import std.io.{println, print, format, str, repr};
+
+func fib(n: int) -> int {
+    if n < 2 { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+
+# A variadic function: `...rest` packs the surplus arguments into a list.
+func total(...xs: any) -> any {
+    let mut s = 0;
+    for x in xs { s = s + x; }
+    return s;
+}
+
+# ---- A class: fields, constructor, method, operator overload, destructor -----
+# `public:` / `private:` access labels are accepted (their enforcement is a later
+# version); fields are declared with `let name: Type;`.
+class Point {
+public:
+    Point(x: int, y: int) {
+        self.x = x;
+        self.y = y;
+    }
+    func sum() -> int { return self.x + self.y; }
+    operator+(other: Point) -> Point {
+        return Point(self.x + other.x, self.y + other.y);
+    }
+    ~Point() { }   # runs when a bound Point leaves scope (deterministic, ARC)
+private:
+    let x: int;
+    let y: int;
+}
+
+func main() -> int {
+    # ---- values & bindings ---------------------------------------------------
+    let i = 42;             # int
+    let f = 3.5;            # float
+    let flag = true;        # bool
+    let name = "mxs";       # string
+    let nothing = nil;      # nil
+    let xs = [1, 2, 3];     # list
+    let mut counter = 0;    # `mut` makes a binding reassignable
+
+    # ---- print / println (variadic, space-joined; print adds no newline) -----
+    print("i =", i, "f =", f);
+    println();                                   # i = 42 f = 3.5
+    println("flag:", flag, "name:", name);       # flag: true name: mxs
+
+    # ---- str (human) vs repr (developer / unambiguous) -----------------------
+    println(str(42), repr("hi"));                # 42 "hi"
+    println(["a", "b"]);                         # ["a", "b"]   (repr inside containers)
+
+    # ---- format: {} positional, {N} indexed, :spec, {:?} = repr --------------
+    println(format("{} + {} = {}", 1, 2, 3));    # 1 + 2 = 3
+    println(format("{0}-{1}-{0}", "x", "y"));    # x-y-x
+    println(format("[{:>6}|{:<6}|{:^6}]", "r", "l", "c"));
+    println(format("pi = {:.3}", 3.14159));      # pi = 3.142
+    println(format("{:?}", "quoted"));           # "quoted"
+
+    # ---- arithmetic, comparison, logic ---------------------------------------
+    println(7 / 2, 7 % 2, 2 ** 10);              # 3 1 1024
+    println(1 < 2, 2 == 2, true && !false);      # true true true
+
+    # ---- if / else if / else -------------------------------------------------
+    if i > 100 { println("big"); }
+    else if i > 10 { println("medium"); }        # medium
+    else { println("small"); }
+
+    # ---- loops: for-in (range / list), until (pre-test), loop + break --------
+    for k in 0..3 { print(k); } println();       # 012   (range 0..3 is exclusive)
+    for x in xs { print(x); } println();         # 123
+
+    let mut n = 5;
+    let mut acc = 1;
+    until (n == 0) { acc = acc * n; n = n - 1; } # `until (c)` runs while c is false
+    println("5! =", acc);                        # 5! = 120
+
+    loop {
+        counter = counter + 1;
+        if counter == 3 { break; }
+    }
+    println("counter =", counter);               # counter = 3
+
+    # ---- lists: append, len, subscript ---------------------------------------
+    xs.append(4);
+    println(xs.len(), xs[0], xs[3]);             # 4 1 4
+
+    # ---- strings: length, subscript, iteration, concatenation ----------------
+    let s = "hi";
+    println(s.len(), s[0], s + " there");        # 2 h hi there
+
+    # ---- calling functions ---------------------------------------------------
+    println("fib(10) =", fib(10));               # fib(10) = 55
+    println("total =", total(1, 2, 3, 4));       # total = 10
+
+    # ---- match: type-binding, literal, wildcard ------------------------------
+    # `10 / 0` yields an Error value; the type-binding arm catches it.
+    println(match (10 / 0) {
+        case v: int   => "an int"
+        case e: Error => "an error"              # an error
+    });
+    println(match (2) {
+        case 1 => "one"
+        case 2 => "two"                          # two
+        case _ => "many"
+    });
+
+    # ---- classes: construct, fields, method, operator+, default repr ---------
+    let p = Point(3, 4);
+    println(p.x, p.y, p.sum());                  # 3 4 7
+    let q = p + Point(10, 20);
+    println(q.sum());                            # 37
+    println(p);                                  # Point(x=3, y=4)
+
+    return 0;
+}

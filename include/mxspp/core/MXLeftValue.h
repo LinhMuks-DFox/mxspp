@@ -28,7 +28,9 @@ namespace mxs::core {
         auto rvalue_update(MXObjectOwned newval) -> MXObjectOwned;
 
     private:
-        MXObjectOwned value_;
+        // The held r-value as a strong reference (ARC, progress11): the cell adopts the +1 of the
+        // value handed to it and releases it on update / destruction.
+        MXObject *value_;
         bool mutable_;
     };
 }// namespace mxs::core

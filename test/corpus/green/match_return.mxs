@@ -1,0 +1,14 @@
+# Regression (progress14): a `return` inside a match-arm block must compile (no invalid IR).
+import std.io.{println};
+func pick(n: int) -> int {
+    let r = match (n) {
+        case 1 => { return 100; }
+        case _ => 0
+    };
+    return r + 1;
+}
+func main() -> int {
+    println(pick(1));        # arm returns 100 from pick
+    println(pick(2));        # wildcard -> r=0 -> return 1
+    return 0;
+}

@@ -1,12 +1,14 @@
 # String indexing + iteration (run-core): subscript, len, for-in now work on strings too.
 # Expected: 5 / e / h / e / l / l / o / 3 / 1
+import std.io.{println};
+
 func main() -> int {
     let s = "hello";
-    println(len(s));          # 5
+    println(s.len());         # 5
     println(s[1]);            # e
     for c in s { println(c); }   # h e l l o
     let xs = [1, 2, 3];
-    println(len(xs));         # 3 (list still works)
+    println(xs.len());        # 3 (list still works)
     println(xs[0]);           # 1
     return 0;
 }

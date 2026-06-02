@@ -8,15 +8,15 @@ Comments are used to annotate code and are ignored by the compiler.
 
 * **Single-line comments**: Start with `#` and continue to the end of the line.
 
-* **Multi-line comments**: Are enclosed between `!##!` and `!##!`.
+* **Block comments**: Are enclosed between `/*` and `*/` (not nestable). `//` is also accepted as a line comment.
 
 ```mxscript
 # This is a single-line comment.
 
-!##!
+/*
   This is a
   multi-line comment block.
-!##!
+*/
 ```
 
 ### 2. Variables and Assignments
@@ -158,7 +158,7 @@ loop {
 The `for-in` loop iterates over the elements of a collection. (Note: Requires a collection that supports the iterator protocol).
 
 ```mxscript
-let names: [] List<string> = ["Alice", "Bob", "Charlie"];
+let names: List<string> = ["Alice", "Bob", "Charlie"];
 
 for name in names {
     println(name);
@@ -195,6 +195,11 @@ let x: string = "s";
 See ![](./type_system.md)
 
 ### 6. Error Handling
+
+> **Note (2026-06-01 — see `docs/syntax.md`, `develop_log/2026-05-31/progress06`):** `raise` is now an
+> ordinary **function**, not a keyword/statement. Call it as `raise(Error(...))` (and `exit(code)`);
+> the `raise Error(...)` statement form in the older examples below is outdated. The error-model design
+> (the `Error` value, match-based handling) still holds in spirit — only the surface is now a call.
 
 MxScript adopts a unified, value-based approach to error handling that is designed to be both safe and expressive. The system distinguishes between two fundamental categories of errors but handles them through a single, consistent mechanism: the `Error` object.
 

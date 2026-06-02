@@ -7,15 +7,16 @@ target_link_libraries(frontend_test PRIVATE frontend core)
 
 add_test(NAME frontend_test COMMAND frontend_test)
 
-# Runtime object-model tests — pure C++ (no LLVM); links the compiled runtime objects.
-add_executable(runtime_test runtime_test.cpp $<TARGET_OBJECTS:runtime_obj>)
-target_include_directories(runtime_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-add_test(NAME runtime_test COMMAND runtime_test)
-
 # Core type tests — the real C++ MXObject subclasses (MXInteger, …). Links `core`.
 add_executable(core_test core_test.cpp)
 target_include_directories(core_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(core_test PRIVATE core)
 
 add_test(NAME core_test COMMAND core_test)
+
+# Red/green language corpus (progress14 / task22): JIT-runs every test/corpus/green/*.mxs and
+# checks it produces its .out (rc 0); JIT-runs every test/corpus/red/*.mxs and checks it is
+# rejected (rc != 0) with the expected diagnostic substring from its .err. The runner is given the
+# freshly-built mxs binary; std/ + core.bc are copied/built beside it. See test/corpus/run_corpus.sh.
+add_test(NAME corpus
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/corpus/run_corpus.sh $<TARGET_FILE:mxs>)

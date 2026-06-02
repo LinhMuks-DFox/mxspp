@@ -26,7 +26,12 @@ namespace mxs::core {
                                          MXObjectShared value) -> void;
         virtual auto unregister_properties(const property_name_t &name) -> MXObjectOwned;
         virtual auto refer_property(const property_name_t &name) -> MXObjectConstBorrow;
+        // Two stringifications (progress12 D-STR-REPR): `repr()` is the unambiguous developer form
+        // (REPL echo, container/instance elements, format `{:?}`); `str()` is the human form
+        // (top-level print, format `{}`). The default `str()` delegates to `repr()`, so only types
+        // whose two forms differ (notably MXString) override it.
         virtual auto repr() const -> repr_t;
+        virtual auto str() const -> repr_t;
         // Boolean coercion used by conditions / logical ops. Default is true; the builtin
         // types override (false for 0, nil, "", empty containers).
         virtual auto is_truthy() const -> bool;
@@ -45,6 +50,10 @@ namespace mxs::core {
         std::unordered_map<std::string, MXObjectShared> dynamic_shared_properties;
         std::mutex lock;
         mutable std::size_t refcount_ = 1;
+        // Set once the object enters destruction so that retain/release performed *inside* the
+        // destructor (e.g. a user `~Class()` reading `self`) cannot drive the count back to zero
+        // and re-enter destruction (progress11 ARC).
+        mutable bool destroying_ = false;
     };
 
     template<class T = MXObject>

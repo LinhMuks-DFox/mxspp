@@ -1,0 +1,3 @@
+# calling a method that is neither a built-in nor any user selector
+import std.io.{println};
+func main() -> int { let xs = [1, 2]; xs.frobnicate(); return 0; }

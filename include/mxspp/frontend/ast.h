@@ -1,5 +1,4 @@
 #pragma once
-#include "mxspp/backend/codegen.h"
 #include "mxspp/core/MXObject.h"
 
 #include <memory>
@@ -15,7 +14,7 @@ namespace mxs::frontend {
         // ============================
         // Every concrete node initializes the virtual core::MXObject base directly
         // (it has no default ctor); is_static defaults to false until binding analysis
-        // exists. codegen() bodies are stubbed in ast.cpp (real codegen is a later progress).
+        // exists. Codegen consumes the AST via dynamic_cast (see backend/codegen.cpp).
         class MXASTNode : public virtual core::MXObject {
         public:
             virtual ~MXASTNode() = default;
@@ -28,14 +27,11 @@ namespace mxs::frontend {
         class Statement : public virtual MXASTNode {
         public:
             Statement() : core::MXObject(false), MXASTNode(false) { }
-            virtual void codegen(mxs::backend::codegen::CodegenContext &ctx) const = 0;
         };
 
         class Expression : public virtual MXASTNode {
         public:
             Expression() : core::MXObject(false), MXASTNode(false) { }
-            virtual llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const = 0;
         };
 
         // ============================
@@ -45,7 +41,6 @@ namespace mxs::frontend {
         public:
             TranslationUnit() : core::MXObject(false), MXASTNode(false) { }
             std::vector<std::unique_ptr<MXASTNode>> statements;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const;
         };
 
         // ============================
@@ -55,7 +50,6 @@ namespace mxs::frontend {
         public:
             Block() : core::MXObject(false), MXASTNode(false) { }
             std::vector<std::unique_ptr<MXASTNode>> statements;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // ============================
@@ -68,15 +62,12 @@ namespace mxs::frontend {
             std::unique_ptr<Expression> value;
             std::optional<std::string> typeName;
             bool isMut = false;
-
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ExprStatement : public virtual Statement {
         public:
             ExprStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> expr;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class IfStatement : public virtual Statement {
@@ -86,15 +77,12 @@ namespace mxs::frontend {
             std::unique_ptr<Block> thenBlock;
             std::unique_ptr<Statement>
                     elseBranch;// a Block, or another IfStatement (else-if)
-
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ReturnStatement : public virtual Statement {
         public:
             ReturnStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> value;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ForInStatement : public virtual Statement {
@@ -104,27 +92,22 @@ namespace mxs::frontend {
             std::unique_ptr<Expression> iterable;
             std::unique_ptr<Block> body;
             bool isMut = false;
-
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class LoopStatement : public virtual Statement {
         public:
             LoopStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Block> body;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class BreakStatement : public virtual Statement {
         public:
             BreakStatement() : core::MXObject(false), MXASTNode(false) { }
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ContinueStatement : public virtual Statement {
         public:
             ContinueStatement() : core::MXObject(false), MXASTNode(false) { }
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class UntilStatement
@@ -133,7 +116,6 @@ namespace mxs::frontend {
             UntilStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> condition;
             std::unique_ptr<Block> body;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class DoUntilStatement
@@ -142,29 +124,46 @@ namespace mxs::frontend {
             DoUntilStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Block> body;
             std::unique_ptr<Expression> condition;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class AssertStatement : public virtual Statement {
         public:
             AssertStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> expr;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class DeferStatement : public virtual Statement {
         public:
             DeferStatement() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Block> body;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+        };
+
+        // An `import` statement (progress13 D2, "1+3"). `path` is the dotted fqdn split into
+        // segments (`std.io` -> {"std","io"}). The three forms:
+        //   `import std.io;`              -> alias=nil, selected=nil  (qualified by last segment)
+        //   `import std.io as o;`         -> alias="o", selected=nil  (qualified by `o`)
+        //   `import std.io.{println, …};` -> selected={"println",…}   (those names unqualified)
+        // The loader (driver) resolves `path` to an `std/<path>.mxs` file, parses it, and merges
+        // its top-level @@foreign declarations into the importing TU per the form. Import nodes are
+        // removed before codegen (codegen never sees them).
+        class Import : public virtual Statement {
+        public:
+            Import() : core::MXObject(false), MXASTNode(false) { }
+            std::vector<std::string> path;
+            std::optional<std::string> alias;
+            std::optional<std::vector<std::string>> selected;
         };
 
         // A function parameter: name + optional type annotation. Not a Statement/Expression.
+        // `isRest` marks a variadic rest parameter `...name: type` (progress12 D-VARARG): at a call,
+        // the surplus arguments are packed into an MXArrayList bound to this name. Only the last
+        // parameter of a signature may be a rest.
         class Parameter : public virtual MXASTNode {
         public:
             Parameter() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
             std::optional<std::string> typeName;
+            bool isRest = false;
         };
 
         // A top-level (or nested) function definition.
@@ -177,7 +176,6 @@ namespace mxs::frontend {
             std::unique_ptr<Block> body;
             bool isForeign = false;// @@foreign: bodyless, bound to an external symbol
             std::string foreignSymbol;// external symbol (defaults to `name` if empty)
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // ============================
@@ -192,7 +190,6 @@ namespace mxs::frontend {
             std::unique_ptr<Expression> value;
             bool isMut = false;
             bool isStatic = false;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class MethodDef : public virtual Statement {
@@ -204,7 +201,6 @@ namespace mxs::frontend {
             std::unique_ptr<Block> body;
             bool isOverride = false;
             bool isStatic = false;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ConstructorDef : public virtual Statement {
@@ -213,14 +209,12 @@ namespace mxs::frontend {
             std::vector<std::unique_ptr<Parameter>> params;
             std::optional<std::string> baseName;// base-class ctor invoked, if any
             std::unique_ptr<Block> body;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class DestructorDef : public virtual Statement {
         public:
             DestructorDef() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Block> body;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class OperatorDef : public virtual Statement {
@@ -231,7 +225,6 @@ namespace mxs::frontend {
             std::optional<std::string> returnTypeName;
             std::unique_ptr<Block> body;
             bool isOverride = false;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class ClassDef : public virtual Statement {
@@ -241,7 +234,6 @@ namespace mxs::frontend {
             std::optional<std::string> baseType;
             std::vector<std::unique_ptr<MXASTNode>>
                     members;// FieldDecl/Method/Ctor/Dtor/Operator
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // An interface method (signature, with an optional default body). Not a Statement.
@@ -260,7 +252,6 @@ namespace mxs::frontend {
             std::string name;
             std::optional<std::string> baseType;
             std::vector<std::unique_ptr<InterfaceMethod>> methods;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // An enum variant, optionally carrying typed fields. Not a Statement.
@@ -276,7 +267,6 @@ namespace mxs::frontend {
             EnumDef() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
             std::vector<std::unique_ptr<EnumVariant>> variants;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // A plain-struct (`type`) field. Not a Statement.
@@ -292,7 +282,6 @@ namespace mxs::frontend {
             TypeDef() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
             std::vector<std::unique_ptr<TypeField>> fields;
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // ============================
@@ -302,47 +291,36 @@ namespace mxs::frontend {
         public:
             Identifier() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class IntegerLiteral : public virtual Expression {
         public:
-            IntegerLiteral(int64_t value, bool is_static);
+            IntegerLiteral(int64_t value, bool is_static)
+                : core::MXObject(is_static), MXASTNode(is_static), value(value) { }
             int64_t value;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class FloatLiteral : public virtual Expression {
         public:
             FloatLiteral() : core::MXObject(false), MXASTNode(false) { }
             double value = 0.0;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class BooleanLiteral : public virtual Expression {
         public:
             BooleanLiteral() : core::MXObject(false), MXASTNode(false) { }
             bool value = false;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class StringLiteral : public virtual Expression {
         public:
             StringLiteral() : core::MXObject(false), MXASTNode(false) { }
             std::string value;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class NilLiteral : public virtual Expression {
         public:
             NilLiteral() : core::MXObject(false), MXASTNode(false) { }
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class BinaryOp : public virtual Expression {
@@ -351,9 +329,6 @@ namespace mxs::frontend {
             std::unique_ptr<Expression> left;
             std::string op;
             std::unique_ptr<Expression> right;
-
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class UnaryOp : public virtual Expression {
@@ -361,9 +336,6 @@ namespace mxs::frontend {
             UnaryOp() : core::MXObject(false), MXASTNode(false) { }
             std::string op;
             std::unique_ptr<Expression> operand;
-
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class FunctionCall : public virtual Expression {
@@ -371,9 +343,9 @@ namespace mxs::frontend {
             FunctionCall() : core::MXObject(false), MXASTNode(false) { }
             std::string name;
             std::vector<std::unique_ptr<Expression>> args;
-
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
+            // For a method call `obj.m(args)`, `receiver` is the object expression and `name` is
+            // the method name; for a plain / `@@foreign` call `f(args)`, `receiver` is null.
+            std::unique_ptr<Expression> receiver;
         };
 
         // An ArrayList literal: `[a, b, c]` (docs §3.3). Object-mode only.
@@ -381,8 +353,6 @@ namespace mxs::frontend {
         public:
             ListLiteral() : core::MXObject(false), MXASTNode(false) { }
             std::vector<std::unique_ptr<Expression>> elements;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // Member access (read): `target.name` (e.g. `err.msg`). Object-mode only.
@@ -391,8 +361,6 @@ namespace mxs::frontend {
             MemberExpr() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> target;
             std::string name;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // A subscript: `target[index]` (e.g. ArrayList element access). Object-mode only.
@@ -401,14 +369,11 @@ namespace mxs::frontend {
             IndexExpr() : core::MXObject(false), MXASTNode(false) { }
             std::unique_ptr<Expression> target;
             std::unique_ptr<Expression> index;
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         class MatchStatement : public virtual Statement {
         public:
             MatchStatement() : core::MXObject(false), MXASTNode(false) { }
-            void codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
         // A match expression (docs §6 error model / pattern matching): evaluates `subject`,
@@ -429,9 +394,6 @@ namespace mxs::frontend {
             };
             std::unique_ptr<Expression> subject;
             std::vector<Case> cases;
-
-            llvm::Value *
-            codegen(mxs::backend::codegen::CodegenContext &ctx) const override;
         };
 
     }// namespace ast

@@ -21,3 +21,5 @@ check_result.md
 .mypy_cache
 .ropeproject
 .devcontainer/
+__pycache__/
+*.pyc

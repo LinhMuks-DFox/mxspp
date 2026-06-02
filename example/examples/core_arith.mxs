@@ -6,6 +6,8 @@
 #   14
 #   42
 
+import std.io.{println};
+
 func main() -> int {
     println(2 + 3);       # 5
     println(2 + 3 * 4);   # 14 — precedence: real MXInteger mul then add

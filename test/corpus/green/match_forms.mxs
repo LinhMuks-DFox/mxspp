@@ -1,0 +1,15 @@
+# match: literal arm, wildcard, and type-binding (Error vs value)
+import std.io.{println};
+func main() -> int {
+    let x = 2;
+    println(match (x) {
+        case 1 => "one"
+        case 2 => "two"
+        case _ => "other"
+    });
+    println(match (42) {
+        case e: Error => "err"
+        case _ => "value"
+    });
+    return 0;
+}

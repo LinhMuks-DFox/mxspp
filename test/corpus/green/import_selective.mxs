@@ -1,0 +1,6 @@
+# selective import: listed names enter scope unqualified
+import std.io.{println};
+func main() -> int {
+    println("selective");
+    return 0;
+}

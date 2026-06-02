@@ -1,0 +1,10 @@
+# std.time: deterministic assertions (monotonic never goes backwards; wall-clock is after epoch)
+import std.io.{println};
+import std.time.{now, monotonic_ns};
+func main() -> int {
+    let t0 = monotonic_ns();
+    let t1 = monotonic_ns();
+    println(t1 - t0 >= 0);
+    println(now() > 0);
+    return 0;
+}

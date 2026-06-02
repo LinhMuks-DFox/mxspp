@@ -9,17 +9,23 @@
 namespace mxs::core {
 
     MXLeftValue::MXLeftValue(MXObjectOwned value, bool is_mutable)
-        : value_(std::move(value)), mutable_(is_mutable) { }
+        : value_(value.release()), mutable_(is_mutable) { }// adopt the +1
 
-    MXLeftValue::~MXLeftValue() = default;
+    MXLeftValue::~MXLeftValue() {
+        if (value_) value_->release();
+    }
 
-    auto MXLeftValue::rvalue() const -> MXObject * { return value_.get(); }
+    auto MXLeftValue::rvalue() const -> MXObject * { return value_; }// a borrow
 
     auto MXLeftValue::rvalue_update(MXObjectOwned newval) -> MXObjectOwned {
-        if (!mutable_)
+        MXObject *nv = newval.release();// adopt the new value's +1
+        if (!mutable_) {
+            if (nv) nv->release();// reject: drop the reference we just took
             return std::make_unique<MXError>(
                     "ImmutableError", "cannot assign to an immutable (let) binding");
-        value_ = std::move(newval);
+        }
+        if (value_) value_->release();// drop the old value
+        value_ = nv;
         return std::make_unique<builtin::MXNil>();
     }
 
@@ -52,7 +58,14 @@ extern "C" {
 MXLeftValue *mxs_lvalue_new(MXObject *value, std::int64_t is_mutable) {
     return new MXLeftValue(MXObjectOwned(value), is_mutable != 0);
 }
-MXObject *mxs_lvalue_rvalue(MXLeftValue *lv) { return lv ? lv->rvalue() : nullptr; }
+// Returns the held r-value RETAINED (+1) — the ARC accessor rule (progress11): a value read out
+// of a binding is owned by the reader, who releases it when done.
+MXObject *mxs_lvalue_rvalue(MXLeftValue *lv) {
+    if (!lv) return nullptr;
+    MXObject *r = lv->rvalue();
+    if (r) r->retain();
+    return r;
+}
 std::int64_t mxs_lvalue_is_mutable(MXLeftValue *lv) {
     return lv && lv->is_mutable() ? 1 : 0;
 }

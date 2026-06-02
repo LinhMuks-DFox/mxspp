@@ -1,5 +1,7 @@
 # Member access on errors (run-core): the matrix-example style `println(err.msg)`.
 # Expected: 5 / integer division or modulo by zero / ZeroDivisionError
+import std.io.{println};
+
 func safe(a: int, b: int) -> int { return a / b; }
 func main() -> int {
     let x = match (safe(10, 2)) {

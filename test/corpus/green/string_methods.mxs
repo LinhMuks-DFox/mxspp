@@ -1,0 +1,9 @@
+# string length method + range for-loop
+import std.io.{println};
+func main() -> int {
+    println("hello".len());
+    let mut sum = 0;
+    for i in 0..5 { sum += i; }
+    println(sum);
+    return 0;
+}

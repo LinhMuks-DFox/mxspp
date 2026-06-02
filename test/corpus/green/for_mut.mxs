@@ -1,0 +1,6 @@
+# `for mut v` allows reassigning the loop variable in the body
+import std.io.{println};
+func main() -> int {
+    for mut v in 0..3 { v = v + 100; println(v); }
+    return 0;
+}

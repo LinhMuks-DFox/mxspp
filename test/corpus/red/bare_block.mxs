@@ -1,0 +1,3 @@
+# a bare `{ ... }` block is NOT a statement (I8): only control-flow takes a block
+import std.io.{println};
+func main() -> int { { let a = 2; println(a); } return 0; }

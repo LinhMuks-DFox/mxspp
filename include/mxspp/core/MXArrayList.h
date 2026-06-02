@@ -11,13 +11,13 @@ namespace mxs::builtin {
     // MXArrayList — MXScript's dynamic array (docs §3.3 "List<T>", named ArrayList per
     // progress07 D1): a real core::MXObject holding an ordered sequence of element objects.
     //
-    // Elements are stored as borrowed core::MXObject* (the doc's "vector of MXObject*"). Element
-    // *ownership* (reference counting / an arena) is deferred to the runtime ownership layer
-    // (progress07 D3, progress09 open Qs) — for now the list does not own/free its elements,
-    // matching the rest of the current runtime. Two-layer API (C++ + extern "C"), per progress09.
+    // Elements are stored as core::MXObject* and OWNED via reference counting (the ARC protocol,
+    // progress11): `append`/`set` retain the element, `set`/destruction release the prior elements.
+    // Two-layer API (C++ + extern "C"), per progress09.
     class MXS_API MXArrayList : public core::MXObject {
     public:
         explicit MXArrayList(bool is_static = false);
+        ~MXArrayList() override;// releases the references it holds to its elements
 
         auto append(core::MXObject *item) -> void;
         // Borrowed element at `index`, or nullptr if out of range (the extern "C" layer maps

@@ -1,0 +1,8 @@
+# str() vs repr() (repr quotes strings)
+import std.io.{println, str, repr};
+func main() -> int {
+    println(str(42));
+    println(repr("hi"));
+    println(str("hi"));
+    return 0;
+}

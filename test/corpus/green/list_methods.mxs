@@ -1,0 +1,12 @@
+# container methods (D4): append/len/get + literal + subscript + for-in
+import std.io.{println, print};
+func main() -> int {
+    let xs = [10, 20, 30];
+    xs.append(40);
+    println(xs.len());
+    println(xs.get(1));
+    println(xs[2]);
+    for v in xs { print(v); print(" "); }
+    println("");
+    return 0;
+}

@@ -1,0 +1,17 @@
+# MXScript standard time — std.time
+#
+# Two layers (docs/type_system.md §8, docs/ffi.md):
+#   1. @@foreign bindings to the runtime timestamp primitives (mxs_time_*), implemented in
+#      core.bc (src/core/MXTime.cpp). Each returns a fresh owned MXInteger.
+#   2. (no mxs-level wrappers yet — this is a thin layer-1 surface.)
+#
+# Import-gated (progress13 D2/D3): reach these only via `import std.time;` (qualified
+# `time.now(...)`), `import std.time as t;`, or `import std.time.{now, now_ms, monotonic_ns};`.
+#
+#   now()           wall-clock seconds since the Unix epoch
+#   now_ms()        wall-clock milliseconds since the Unix epoch
+#   monotonic_ns()  monotonic nanoseconds (for measuring elapsed durations)
+
+@@foreign(symbol_name="mxs_time_now") func now() -> int;
+@@foreign(symbol_name="mxs_time_ms")  func now_ms() -> int;
+@@foreign(symbol_name="mxs_time_ns")  func monotonic_ns() -> int;

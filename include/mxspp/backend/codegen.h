@@ -4,6 +4,7 @@
 #include <llvm/IR/Value.h>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,46 +15,18 @@ namespace mxs::frontend::ast {
 
 namespace mxs::backend::codegen {
 
-    // State threaded through every AST node's codegen(). First-slice codegen targets a
-    // statically-typed numeric subset (int=i64, float=f64, bool=i1, nil=void): functions,
-    // let/assign, return, if/else, loops, arithmetic/compare/logic, and direct calls.
-    struct CodegenContext {
-        llvm::LLVMContext &llvmContext;
-        llvm::Module *module;
-        llvm::IRBuilder<> *builder;
-        std::unordered_map<std::string, llvm::AllocaInst *> namedValues;// locals + params
-        std::unordered_map<std::string, llvm::Function *> functions;// by name
-        llvm::Function *currentFunction = nullptr;
-        std::vector<llvm::BasicBlock *> breakTargets;// innermost loop exit
-        std::vector<llvm::BasicBlock *> continueTargets;// innermost loop continue
-    };
-
-    // Map an MXScript type name to an LLVM type ("int"->i64, "float"->double,
-    // "bool"->i1, "nil"->void; unknown -> i64 for now).
-    llvm::Type *map_type(llvm::LLVMContext &ctx, const std::string &name);
-
-    // Compile a whole program (TranslationUnit) into an LLVM module. Declares all
-    // function prototypes first (so recursion / mutual calls resolve), then emits bodies,
-    // then runs the LLVM verifier. Returns nullptr on error (diagnostics to stderr).
-    std::unique_ptr<llvm::Module> compile(const frontend::ast::TranslationUnit &tu,
-                                          llvm::LLVMContext &llvmContext,
-                                          const std::string &moduleName = "mxs");
-
-    // Object-mode lowering ("everything is an object"): values are boxed MXObject*,
-    // arithmetic goes through dynamic dispatch (mxs_op_*), and println is polymorphic
-    // (mxs_obj_println). First slice: main + literals + +/-/* + println, to prove the
-    // box -> dynamic-dispatch -> polymorphic-print path end-to-end.
-    std::unique_ptr<llvm::Module> compile_obj(const frontend::ast::TranslationUnit &tu,
-                                              llvm::LLVMContext &llvmContext,
-                                              const std::string &moduleName = "mxs_obj");
-
     // New object-model lowering (progress09 ④): values are real core::MXObject* and operators
     // emit the typed core ABI (mxs_int_add, …) defined in core.bc, which the JIT links in.
     // Seed slice: functions, integer literals, int arithmetic, and generic calls (the stdlib —
-    // println, … — resolves via @@foreign, no per-function hardcoding). Variables, control flow,
-    // and the other types follow as this path grows to replace compile_obj.
+    // println, … — resolves via @@foreign, no per-function hardcoding). This is the single,
+    // canonical codegen path.
+    // `moduleNamespaces` are the qualified-import namespaces (alias or module last segment, e.g.
+    // `io` from `import std.io;`). A call `ns.fn(args)` whose `ns` is in this set resolves to the
+    // merged function keyed `ns.fn` — distinguishing a module-qualified call from a method call on
+    // a value (progress13 D2). The set is empty for programs with no qualified imports.
     std::unique_ptr<llvm::Module>
     compile_core(const frontend::ast::TranslationUnit &tu, llvm::LLVMContext &llvmContext,
-                 const std::string &moduleName = "mxs_core");
+                 const std::string &moduleName = "mxs_core",
+                 const std::set<std::string> &moduleNamespaces = { });
 
 }// namespace mxs::backend::codegen

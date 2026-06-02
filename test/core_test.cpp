@@ -4,14 +4,18 @@
 
 #include "mxspp/core/MXArrayList.h"
 #include "mxspp/core/MXBoolean.h"
+#include "mxspp/core/MXClassInfo.h"
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
+#include "mxspp/core/MXInstance.h"
 #include "mxspp/core/MXInteger.h"
 #include "mxspp/core/MXLeftValue.h"
 #include "mxspp/core/MXNil.h"
 #include "mxspp/core/MXObject.h"
+#include "mxspp/core/MXPopulationManager.h"
 #include "mxspp/core/MXString.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -23,6 +27,18 @@ mxs::core::MXObject *mxs_op_add(mxs::core::MXObject *, mxs::core::MXObject *);
 mxs::core::MXObject *mxs_op_div(mxs::core::MXObject *, mxs::core::MXObject *);
 mxs::core::MXObject *mxs_op_lt(mxs::core::MXObject *, mxs::core::MXObject *);
 mxs::core::MXObject *mxs_op_eq(mxs::core::MXObject *, mxs::core::MXObject *);
+// User class instance ABI (MXOps.cpp / MXInstance.cpp, progress11).
+mxs::core::MXObject *mxs_instance_new(const mxs::core::MXClassInfo *);
+void mxs_set_attr(mxs::core::MXObject *, const char *, mxs::core::MXObject *);
+mxs::core::MXObject *mxs_get_attr(const mxs::core::MXObject *, const char *);
+std::int64_t mxs_is_type(const mxs::core::MXObject *, const char *);
+const mxs::core::MXClassInfo *mxs_object_classinfo(const mxs::core::MXObject *);
+// stdio: str/repr builtins (MXString.cpp) + format + list packing (MXFormat.cpp / MXArrayList.cpp).
+mxs::core::MXObject *mxs_str(mxs::core::MXObject *);
+mxs::core::MXObject *mxs_repr(mxs::core::MXObject *);
+mxs::core::MXObject *mxs_format(mxs::core::MXObject *, mxs::core::MXObject *);
+mxs::core::MXObject *mxs_arraylist_new();
+void mxs_arraylist_append(mxs::core::MXObject *, mxs::core::MXObject *);
 }
 
 using mxs::make_immutable_left_value;
@@ -159,8 +175,10 @@ MX_TEST(string_basics) {
     CHECK(MXString("abc").cmp(MXString("abd")) < 0);
     CHECK(MXString("abc").cmp(MXString("abc")) == 0);
     CHECK(MXString("b").cmp(MXString("a")) > 0);
-    // repr is the raw bytes; from_literal builds an MXString
-    CHECK(MXString("hi").repr() == "hi");
+    // str() is the raw bytes; repr() is the quoted form (progress12 D-STR-REPR). from_literal
+    // builds an MXString.
+    CHECK(MXString("hi").str() == "hi");
+    CHECK(MXString("hi").repr() == "\"hi\"");
     CHECK(dynamic_cast<const MXString *>(MXString::from_literal("lit").get())->value() ==
           "lit");
     CHECK(MXString("").empty());
@@ -232,32 +250,39 @@ MX_TEST(nil_basics) {
 }
 
 MX_TEST(arraylist_basics) {
-    // keep element objects alive for the duration of the test (list borrows them)
-    auto a = MXInteger::from_literal("10");
-    auto b = MXInteger::from_literal("20");
-    auto c = MXInteger::from_literal("30");
+    // The list OWNS its elements via refcounting (ARC, progress11): append/set retain, and the
+    // list releases them on destruction. So we hand it freshly-created (+1) objects and drop our
+    // own reference, leaving the list as the sole owner (no unique_ptr double-management).
     MXArrayList xs;
     CHECK(dynamic_cast<const MXInteger *>(xs.length().get())->to_decimal() == "0");
     CHECK(xs.repr() == "[]");
-    xs.append(a.get());
-    xs.append(b.get());
-    xs.append(c.get());
+    auto *a = MXInteger::from_literal("10").release();// raw +1
+    auto *b = MXInteger::from_literal("20").release();
+    auto *c = MXInteger::from_literal("30").release();
+    xs.append(a);// list retains -> +2; drop our +1 -> list is sole owner (+1)
+    a->release();
+    xs.append(b);
+    b->release();
+    xs.append(c);
+    c->release();
     CHECK(xs.size() == 3);
     CHECK(dynamic_cast<const MXInteger *>(xs.length().get())->to_decimal() == "3");
     CHECK(xs.repr() == "[10, 20, 30]");
-    CHECK(xs.get(0) == a.get());
+    CHECK(xs.get(0) == a);
     CHECK(dynamic_cast<const MXInteger *>(xs.get(2))->to_decimal() == "30");
     CHECK(xs.get(3) == nullptr);// out of range -> nullptr (C++ API)
     CHECK(xs.get(-1) == nullptr);
-    // set
-    auto d = MXInteger::from_literal("99");
-    CHECK(xs.set(1, d.get()));
+    // set: retains the new element, releases the old one (b is freed here).
+    auto *d = MXInteger::from_literal("99").release();
+    CHECK(xs.set(1, d));
+    d->release();// list is the sole owner of d
     CHECK(xs.repr() == "[10, 99, 30]");
-    CHECK(!xs.set(5, d.get()));
-    // concat -> a new list
+    CHECK(!xs.set(5, d));// out of range; d untouched (still owned by the list at index 1)
+    // concat -> a new list that retains the shared elements.
     MXArrayList ys;
-    auto e = MXInteger::from_literal("40");
-    ys.append(e.get());
+    auto *e = MXInteger::from_literal("40").release();
+    ys.append(e);
+    e->release();
     auto z = xs.concat(ys);
     CHECK(dynamic_cast<const MXArrayList *>(z.get())->size() == 4);
     CHECK(dynamic_cast<const MXArrayList *>(z.get())->repr() == "[10, 99, 30, 40]");
@@ -329,7 +354,8 @@ MX_TEST(dynamic_dispatch_ops) {
     // string + string concatenates
     auto *c = mxs_op_add(new MXString("foo"), new MXString("bar"));
     CHECK(dynamic_cast<const MXString *>(c) != nullptr);
-    CHECK(repr(c) == "foobar");
+    CHECK(dynamic_cast<const MXString *>(c)->str() == "foobar");
+    CHECK(repr(c) == "\"foobar\"");// repr() quotes strings now (D-STR-REPR)
     // string + number is a type error (an MXError object, not a crash)
     auto *e = mxs_op_add(new MXString("x"), MXInteger::from_literal("1").release());
     CHECK(dynamic_cast<const mxs::core::MXError *>(e) != nullptr);
@@ -349,6 +375,167 @@ MX_TEST(dynamic_dispatch_ops) {
     CHECK(!dynamic_cast<const MXBoolean *>(
                    mxs_op_eq(MXInteger::from_literal("1").release(), new MXString("1")))
                    ->value());
+}
+
+namespace {
+    int g_instance_dtor_calls = 0;
+    void instance_test_dtor(mxs::core::MXObject *self) {
+        (void) self;
+        ++g_instance_dtor_calls;
+    }
+    // A user operator+ that ignores its operands and returns MXInteger(999) — proves the
+    // vtable-slot routing in mxs_op_add reaches the user operator.
+    mxs::core::MXObject *instance_test_op_add(mxs::core::MXObject *a,
+                                              mxs::core::MXObject *b) {
+        (void) a;
+        (void) b;
+        return MXInteger::from_literal("999").release();
+    }
+}// namespace
+
+MX_TEST(instance_fields_repr_and_type) {
+    using mxs::core::MXClassInfo;
+    static void *vt[mxs::core::MX_SLOT_RESERVED_COUNT] = { };
+    static const MXClassInfo ci{ "TestPt", nullptr, nullptr,
+                                 mxs::core::MX_SLOT_RESERVED_COUNT, vt };
+    auto *inst = mxs_instance_new(&ci);
+    CHECK(inst != nullptr);
+    CHECK(mxs_object_classinfo(inst) == &ci);
+    CHECK(mxs_is_type(inst, "TestPt") == 1);
+    CHECK(mxs_is_type(inst, "Other") == 0);
+    CHECK(mxs_is_type(inst, "Object") == 1);// every object is an Object
+    mxs_set_attr(inst, "x", MXInteger::from_literal("3").release());
+    mxs_set_attr(inst, "y", MXInteger::from_literal("4").release());
+    auto *fx = mxs_get_attr(inst, "x");// returns the field, retained (+1)
+    CHECK(dynamic_cast<const MXInteger *>(fx)->to_decimal() == "3");
+    fx->release();
+    CHECK(inst->repr() == "TestPt(x=3, y=4)");
+    auto *fz = mxs_get_attr(inst, "z");// unset field -> nil (+1)
+    CHECK(dynamic_cast<const MXNil *>(fz) != nullptr);
+    fz->release();
+    inst->release();// drops the instance, releasing its owned field objects
+}
+
+MX_TEST(instance_destructor_and_field_arc) {
+    using mxs::core::MXClassInfo;
+    using mxs::core::MXPopulationManager;
+    static void *vt[mxs::core::MX_SLOT_RESERVED_COUNT] = { };
+    static const MXClassInfo ci{ "Res", nullptr, &instance_test_dtor,
+                                 mxs::core::MX_SLOT_RESERVED_COUNT, vt };
+    g_instance_dtor_calls = 0;
+    const std::size_t before = MXPopulationManager::get_manager().population_count();
+    auto *inst = mxs_instance_new(&ci);
+    mxs_set_attr(inst, "v", MXInteger::from_literal("42").release());
+    CHECK(g_instance_dtor_calls == 0);
+    inst->release();// rc 0 -> ~MXInstance: runs the user dtor, then releases the field
+    CHECK(g_instance_dtor_calls == 1);// the destructor fired exactly once
+    // Instance + field are both freed -> the live-object count returns to baseline (no leak).
+    CHECK(MXPopulationManager::get_manager().population_count() == before);
+}
+
+MX_TEST(instance_operator_overload_dispatch) {
+    using mxs::core::MXClassInfo;
+    static void *vt[mxs::core::MX_SLOT_RESERVED_COUNT] = { };
+    vt[mxs::core::MX_SLOT_OP_ADD] = reinterpret_cast<void *>(&instance_test_op_add);
+    static const MXClassInfo ci{ "Adder", nullptr, nullptr,
+                                 mxs::core::MX_SLOT_RESERVED_COUNT, vt };
+    auto *inst = mxs_instance_new(&ci);
+    // mxs_op_add sees `inst`'s class overrides OP_ADD -> dispatches to the user operator.
+    auto *one = MXInteger::from_literal("1").release();
+    auto *r = mxs_op_add(inst, one);
+    CHECK(dynamic_cast<const MXInteger *>(r)->to_decimal() == "999");
+    r->release();
+    one->release();
+    // An instance whose class does NOT override OP_ADD falls back to the builtin path
+    // (instance + int is unsupported -> an MXError, not a crash).
+    static void *vt2[mxs::core::MX_SLOT_RESERVED_COUNT] = { };
+    static const MXClassInfo ci2{ "Plain", nullptr, nullptr,
+                                  mxs::core::MX_SLOT_RESERVED_COUNT, vt2 };
+    auto *inst2 = mxs_instance_new(&ci2);
+    auto *two = MXInteger::from_literal("1").release();
+    auto *e = mxs_op_add(inst2, two);
+    CHECK(dynamic_cast<const mxs::core::MXError *>(e) != nullptr);
+    e->release();
+    two->release();
+    inst->release();
+    inst2->release();
+}
+
+// ---- progress12: stdio (str/repr split + format) -------------------------------------------
+
+MX_TEST(string_str_repr_split) {
+    // str() = raw bytes (for print); repr() = quoted + escaped (containers / REPL / {:?}).
+    CHECK(MXString("hi").str() == "hi");
+    CHECK(MXString("hi").repr() == "\"hi\"");
+    // the common escapes round-trip in repr()
+    CHECK(MXString(std::string("a\"b\n\t\\")).repr() == "\"a\\\"b\\n\\t\\\\\"");
+    // a list of strings now shows quoted elements (the container-ambiguity fix)
+    MXArrayList xs;
+    auto *s1 = new MXString("hi");
+    xs.append(s1);
+    s1->release();
+    auto *s2 = new MXString("yo");
+    xs.append(s2);
+    s2->release();
+    CHECK(xs.repr() == "[\"hi\", \"yo\"]");
+    // a scalar's two forms coincide (only strings differ)
+    CHECK(MXInteger::from_literal("42")->str() == "42");
+    CHECK(MXInteger::from_literal("42")->repr() == "42");
+    // mxs_str / mxs_repr builtins: a fresh MXString of the right form; nil -> "nil"
+    auto *arg = new MXString("x");
+    auto *sr = mxs_str(arg);
+    CHECK(dynamic_cast<const MXString *>(sr)->value() == "x");
+    auto *rr = mxs_repr(arg);
+    CHECK(dynamic_cast<const MXString *>(rr)->value() == "\"x\"");
+    sr->release();
+    rr->release();
+    arg->release();
+    auto *ns = mxs_str(nullptr);
+    CHECK(dynamic_cast<const MXString *>(ns)->value() == "nil");
+    ns->release();
+}
+
+MX_TEST(stdio_format) {
+    // Pack a list of (already +1) objects, releasing each caller-ref after the list adopts it.
+    auto mklist = [](std::initializer_list<MXObject *> items) {
+        auto *l = mxs_arraylist_new();
+        for (auto *it : items) {
+            mxs_arraylist_append(l, it);
+            it->release();
+        }
+        return l;
+    };
+    auto fmt = [&](const char *f, std::initializer_list<MXObject *> items) {
+        auto *fObj = new MXString(f);
+        auto *args = mklist(items);
+        auto *r = mxs_format(fObj, args);
+        const auto *rs = dynamic_cast<const MXString *>(r);
+        std::string out = rs ? rs->value() : std::string("<err>");
+        r->release();
+        fObj->release();
+        args->release();
+        return out;
+    };
+    using I = MXInteger;
+    CHECK(fmt("{} + {} = {}",
+              { I::from_literal("1").release(), I::from_literal("2").release(),
+                I::from_literal("3").release() }) == "1 + 2 = 3");
+    CHECK(fmt("{0} {1} {0}", { new MXString("a"), new MXString("b") }) == "a b a");
+    CHECK(fmt("{{}}", { }) == "{}");
+    CHECK(fmt("[{:>5}]", { new MXString("hi") }) == "[   hi]");
+    CHECK(fmt("[{:<5}]", { new MXString("hi") }) == "[hi   ]");
+    CHECK(fmt("[{:^6}]", { new MXString("hi") }) == "[  hi  ]");
+    CHECK(fmt("[{:*^6}]", { new MXString("hi") }) == "[**hi**]");
+    CHECK(fmt("{:.2}", { new MXFloat(3.14159) }) == "3.14");
+    CHECK(fmt("{:?}", { new MXString("x") }) == "\"x\"");
+    // out-of-range index -> an MXError value (no crash)
+    auto *fObj = new MXString("{5}");
+    auto *args = mklist({ I::from_literal("1").release() });
+    auto *r = mxs_format(fObj, args);
+    CHECK(dynamic_cast<const mxs::core::MXError *>(r) != nullptr);
+    r->release();
+    fObj->release();
+    args->release();
 }
 
 int main() { return mxtest::run_all(); }

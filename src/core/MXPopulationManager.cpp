@@ -22,6 +22,11 @@ namespace mxs::core {
         if (obj) this->populations.erase(obj);
     }
 
+    auto MXPopulationManager::population_count() const -> std::size_t {
+        std::scoped_lock guard(this->lock);
+        return this->populations.size();
+    }
+
     MXPopulationManager::MXPopulationManager() = default;
     MXPopulationManager::~MXPopulationManager() = default;
     auto MXPopulationManager::repr() const -> std::string {

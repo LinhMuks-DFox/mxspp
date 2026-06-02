@@ -2,7 +2,6 @@
 # Demonstrates @@static_deterministic, recursion and compile-time evaluation.
 
 import std.io as io;
-static let println = io.println;
 
 @@static_deterministic
 func fib(n: int) -> int {
@@ -14,6 +13,6 @@ func fib(n: int) -> int {
 
 func main() -> int {
     let fib_10 = fib(10);
-    println(fib_10);
+    io.println(fib_10);
     return 0;
 }

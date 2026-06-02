@@ -4,7 +4,6 @@
 # 链接逻辑将移至各模块自己的 CMakeLists.txt 文件中
 add_subdirectory(core)
 add_subdirectory(frontend)
-add_subdirectory(runtime)
 add_subdirectory(backend)
 add_subdirectory(jit)
 add_subdirectory(shell)
