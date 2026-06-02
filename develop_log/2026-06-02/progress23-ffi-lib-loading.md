@@ -36,20 +36,35 @@ Mux: "@@foreign(lib="XXX") 这个东西，你是不是没注意到？这个必�
   program's `@@foreign` decls; for each, add an ORC `DynamicLibrarySearchGenerator::Load(path, globalPrefix)`
   generator to the JITDylib so its symbols resolve. (Thread the lib set: codegen/resolver collects it →
   driver/shell → a new `jit::run` parameter, or attach to the module.) `dlopen`-style; resolves lazily.
-- **D3 (FORK) — how do the STDLIB's own `mxs_*` bindings declare `lib`?** They live in core.bc/std.bc
-  (JIT-linked, NOT an external .so), and shipping the runtime as bitcode is deliberate (enables D0
-  cross-module inlining — progress19). Options: (a) a reserved **sentinel** `lib="std"` / `lib="core"` (or
-  `lib="@runtime"`) that means "resolve from the linked runtime bitcode / process" — no dlopen; external
-  bindings use a real path/soname. (b) keep stdlib bindings `lib`-less and require `lib` only for external
-  libs (contradicts "Mandatory"). (c) ship the runtime as `runtime.so` and use `lib="runtime.so"`
-  (contradicts the bitcode/inlining design). **Recommend (a)** — keeps `lib` mandatory + honest while
-  preserving the bitcode runtime. Then update all `std/*.mxs` to `lib="std"` (or "core") + the new progress20
-  modules follow suit. Confirm with Mux.
-- **D4 (FORK) — enforcement.** Make `lib` required (a clear diagnostic if a `@@foreign` omits it), per the
-  spec? Couples to D3 (the stdlib must then carry the sentinel). Recommend: required, with the sentinel for
-  runtime symbols.
-- **D5 — soname vs path.** Accept both a bare soname (`"libm.so.6"` / `"libcurl.so"`, resolved by the
-  loader's search path) and an absolute path. ORC's `Load` takes a filename the dynamic loader resolves.
+- **D3 (RESOLVED — Mux, 2026-06-02) — `lib=` uniformly names the providing artifact; NO special-casing of
+  std.** Mux: "我不喜欢搞特殊…用户完全可以不用 std 里的任何东西，也就不应该对 std 有任何特殊对待." The loader
+  dispatches by file type:
+  - **`.so` / `.dylib` / `.dll`** (any C-ABI shared library) → **native dynamic load** (ORC
+    `DynamicLibrarySearchGenerator::Load`); the symbol is resolved at runtime (called, not inlined).
+  - **`.bc`** (LLVM bitcode) → **IR-link** into the merged module (and thus optimized/inlined by D0).
+  - **The stdlib declares `lib="std.bc"`** (std's C impl IS compiled to bitcode — progress17:
+    `src/_std/*.cpp → std.bc`); symbols that stayed in core declare **`lib="core.bc"`**. std.bc is treated
+    EXACTLY like any user-named lib — no sentinel, no exemption.
+  - A program that names no `lib="std.bc"` does NOT get std.bc linked → **the user can opt out of std
+    entirely.** (`core.bc` is the exception, but it is the *compiler runtime* — it holds codegen-EMITTED
+    symbols `mxs_op_*`/`mxs_retain`/… that are not `@@foreign` — so it is always linked. That is the
+    compiler's own runtime, NOT a "std" special-case.)
+- **D4 (RESOLVED) — JIT module loading becomes `lib=`-annotation-driven.** Collect the distinct `lib=`
+  values from the program's (transitively-resolved) `@@foreign` decls; for each `.bc` → parse + `llvm::Linker`
+  into the merged module (the D0 module); for each `.so/.dylib/.dll` → add a
+  `DynamicLibrarySearchGenerator::Load(path)`. `core.bc` is always linked (compiler runtime). This SUBSUMES
+  today's hardcoded "always link core.bc + std.bc" — std.bc becomes "linked iff some binding names it".
+- **D5 — soname or path.** For native libs accept a bare soname (`"libm.so.6"`, `"libcurl.so"`,
+  `"libfoo.dylib"`, `"foo.dll"`) resolved by the platform loader, or an absolute path. For `.bc`, resolve via
+  the same `find_bc()` search the runtime bitcode already uses (next to the binary, build dirs).
+- **D6 — `lib` is mandatory** (per docs/ffi.md); a `@@foreign` missing `lib` is a clean diagnostic. No
+  exemptions (std carries `lib="std.bc"`/`"core.bc"` like everyone else).
+
+### Interim coupling with D0 (progress19/task40)
+D0 (in flight now) keeps the current hardcoded "link core.bc + std.bc into the merged+optimized module".
+That stays correct as an interim; progress23 then refactors jit.cpp so module loading is `lib=`-driven
+(D4) — which preserves D0's merge/optimize for `.bc` libs and ADDS native `.so/.dylib/.dll` loading + the
+"unused std isn't linked" opt-out. progress23 lands AFTER D0 (both touch jit.cpp; no concurrent edits).
 
 ## Relationship to other work
 - **Orthogonal to D0** (progress19): external-lib symbols are CALLED (resolved at JIT time), not inlined;
@@ -59,12 +74,19 @@ Mux: "@@foreign(lib="XXX") 这个东西，你是不是没注意到？这个必�
   particular will bind real external/system libraries via `lib`.
 
 ## Tasks
-- [ ] task41 — parse+store `lib` (D1) + JIT external-library loading (D2) + the runtime sentinel (D3) +
-      enforcement (D4); test by binding a real external symbol (e.g. `libm` `pow`/`sqrt` via
-      `@@foreign(lib="libm.so.6", symbol_name="sqrt")`) and calling it, plus the sentinel path for stdlib.
+- [ ] task41 — parse+store `lib` on FunctionDef (D1); make JIT loading `lib=`-driven (D4): `.bc` →
+      Linker-merge (into D0's module), `.so/.dylib/.dll` → `DynamicLibrarySearchGenerator::Load`; `lib`
+      mandatory + clean diagnostic (D6); update every `std/*.mxs` binding to `lib="std.bc"` (or
+      `lib="core.bc"` for core-resident symbols). Tests: (a) bind a real native symbol, e.g.
+      `@@foreign(lib="libm.so.6", symbol_name="sqrt")` and call it; (b) std still works with `lib="std.bc"`;
+      (c) a program using no std does not link std.bc; (d) a missing `lib` errors cleanly.
 
 ## Agent log
 - 2026-06-02 [ai/opus] Recorded from Mux's catch that `@@foreign(lib=...)` (mandatory per docs/ffi.md) is
-  parsed-but-discarded and entirely unused — external-library FFI is impossible today. Captured the
-  parse+store+JIT-load plan and the stdlib-sentinel design fork (D3/D4). Orthogonal to the std batch and
-  to D0; slot per Mux's priority. NOT executed.
+  parsed-but-discarded and entirely unused — external-library FFI is impossible today.
+- 2026-06-02 [ai/opus] Mux RESOLVED the design fork (rejected my sentinel idea): `lib=` uniformly names the
+  providing artifact, std gets NO special treatment — `.so/.dylib/.dll` → native dynamic load (C ABI), `.bc`
+  → IR-link/merge/inline, std uses `lib="std.bc"`, core-resident symbols `lib="core.bc"`; module loading
+  becomes `lib=`-annotation-driven so a program that doesn't name std.bc doesn't link it (core.bc stays
+  always-linked as the compiler runtime, not a std special-case). `lib` mandatory. See D3-D6. Lands after
+  D0 (shared jit.cpp). NOT executed.
