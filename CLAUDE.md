@@ -27,12 +27,24 @@ changes are reviewed by Mux before they count as done.**
 
 ## Workflow
 
+**Everything goes through progress → task → execute. No exceptions.** Both new requirements and bugs
+follow the same path; the AI must NOT jump straight to code:
+
+- a **requirement** → progress → task(s) → **implement**
+- a **bug** → progress → task(s) → **debug/fix**
+
+Steps:
 1. Mux raises an idea / problem (conversation in Chinese).
 2. AI creates or updates a **progress** entry under `develop_log/<date>/` recording the decision,
    rationale, and impact.
 3. AI breaks the work into one or more **task** files under `develop_log/<date>/tasks/`.
 4. AI implements the task (code), keeping builds (and any tests/examples) green.
 5. AI appends to the progress `Agent log`; Mux reviews.
+
+**Batch rule (Mux, 2026-06-02).** When Mux fires several requirements/bugs in quick succession, FIRST
+capture *each* as its own progress + task(s); do NOT implement piecemeal mid-stream. Once they are all
+recorded (and Mux has reviewed the plan), implement the batch together. Recording first keeps the
+direction coherent and lets Mux re-prioritize before any code is written.
 
 See `develop_log/README.md` for file conventions, templates, and naming.
 
