@@ -61,6 +61,17 @@ PEGTL_CONFIG = {
     "target_dir_name": "pegtl",
 }
 
+# --- linenoise Configuration (single-file BSD line editor, antirez/linenoise) ---
+# Pinned to a full commit SHA for reproducible, frozen vendoring (the REPL line editor).
+# The GitHub archive zip extracts to linenoise-<sha>/, renamed to lib/linenoise/.
+LINENOISE_COMMIT = "a473823d74b93eab2ba83480df16ed37617493f2"
+LINENOISE_CONFIG = {
+    "url": f"https://github.com/antirez/linenoise/archive/{LINENOISE_COMMIT}.zip",
+    "archive_name": f"linenoise-{LINENOISE_COMMIT}.zip",
+    "inner_dir_prefix": f"linenoise-{LINENOISE_COMMIT}",
+    "target_dir_name": "linenoise",
+}
+
 
 # ==============================================================================
 # Helper Functions for Colored Output
@@ -418,6 +429,27 @@ def setup_pegtl() -> None:
     success(f"PEGTL is ready at '{install_path}'.")
 
 
+def setup_linenoise() -> None:
+    """Downloads and sets up the linenoise single-file line editor (REPL line editing)."""
+    config = LINENOISE_CONFIG
+    install_path = LIB_DIR / config["target_dir_name"]
+
+    if install_path.is_dir():
+        success(f"linenoise already found at '{install_path}'. Skipping download.")
+        return
+
+    info("Setting up linenoise...")
+    LIB_DIR.mkdir(exist_ok=True)
+    download_and_extract(
+        config["url"],
+        config["archive_name"],
+        LIB_DIR,
+        config["inner_dir_prefix"],
+        config["target_dir_name"],
+    )
+    success(f"linenoise is ready at '{install_path}'.")
+
+
 # ==============================================================================
 # Main Execution
 # ==============================================================================
@@ -458,6 +490,9 @@ def main():
 
         print()
         setup_pegtl()
+
+        print()
+        setup_linenoise()
 
         print()
         success("Project dependencies are successfully set up.")
