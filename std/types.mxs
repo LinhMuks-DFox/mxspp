@@ -1,0 +1,21 @@
+# MXScript standard types / reflection — std.types
+#
+# Two layers (docs/type_system.md §8, docs/ffi.md):
+#   1. @@foreign bindings to the runtime reflection primitives (mxs_*), implemented in core.bc
+#      (src/core/MXOps.cpp).
+#   2. (no mxs-level wrappers yet — this is a thin layer-1 surface.)
+#
+# Import-gated (progress13 D2): reach these only via `import std.types;` (qualified
+# `types.typeof(...)`), `import std.types as t;`, or `import std.types.{typeof};`.
+#
+#   typeof(x)            the type name of x as a string. A user-class instance yields its class
+#                        name; the built-ins yield int / float / str / bool / nil / List / Error.
+#   is_instance_of(x, cls)  is x of the type named by the string `cls`? e.g. is_instance_of(p, "Point"),
+#                        is_instance_of(42, "int"). (No inheritance yet, so this is an exact match.)
+
+@@foreign(symbol_name="mxs_typeof") func typeof(x: any) -> str;
+
+# Layer-2: a pure-mxs function built on the typeof primitive (no inheritance yet -> exact match).
+func is_instance_of(x: any, cls: str) -> bool {
+    return typeof(x) == cls;
+}

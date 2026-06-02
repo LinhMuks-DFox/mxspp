@@ -220,6 +220,23 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     return o->get_rtti().name == t ? 1 : 0;// other user/class types: match by RTTI name
 }
 
+// The mxs type name of a value, as a fresh MXString (the inverse of mxs_is_type's mapping): a user
+// instance -> its class name (MXClassInfo->name); built-ins -> the canonical name
+// (int/float/str/bool/nil/List/Error). Backs `std.types.typeof`. Foreign-borrow ABI: returns a +1
+// the caller owns.
+MXObject *mxs_typeof(const MXObject *o) {
+    if (!o) return new MXString("nil");
+    if (const auto *inst = as<MXInstance>(o)) return new MXString(inst->class_name());
+    if (as<MXError>(o)) return new MXString("Error");
+    if (as<MXInteger>(o)) return new MXString("int");
+    if (as<MXFloat>(o)) return new MXString("float");
+    if (as<MXString>(o)) return new MXString("str");
+    if (as<MXBoolean>(o)) return new MXString("bool");
+    if (as<mxs::builtin::MXNil>(o)) return new MXString("nil");
+    if (as<mxs::builtin::MXArrayList>(o)) return new MXString("List");
+    return new MXString(o->get_rtti().name);
+}
+
 // Generic length: ArrayList element count or String byte length, as an MXInteger. Used by
 // `len(...)` and `for x in xs`. Non-sized objects -> MXError.
 MXObject *mxs_len(const MXObject *o) {
