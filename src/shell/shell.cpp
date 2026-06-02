@@ -105,7 +105,7 @@ namespace mxs::shell {
             if (!imp.ok) return false;
             auto ctx = std::make_unique<llvm::LLVMContext>();
             auto mod = mxs::backend::codegen::compile_core(*tu, *ctx, "<repl>",
-                                                           imp.namespaces);
+                                                           imp.namespaces, imp.exposed);
             if (!mod) return false;
             mxs::jit::run(std::move(mod), std::move(ctx), /*runtimeBc=*/stdBcPath, "main",
                           coreBcPath);

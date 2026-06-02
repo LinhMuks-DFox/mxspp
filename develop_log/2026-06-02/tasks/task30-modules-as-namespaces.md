@@ -1,9 +1,30 @@
 # Task 30 — Modules as real namespaces (the layer-2 enabler)
 id: 2026-06-02/task30
 parent: 2026-06-02/progress18
-status: pending
+status: done (A–D landed; E/D-MODLET deferred with reason)
 owner: code_agent
-blocked-on: progress17 (src/std tree) preferable first, so the .mxs modules tested here bind a real std.bc
+blocked-on: (was) progress17 — now done
+
+## Outcome (2026-06-02, implemented via sub-agent + independently re-verified by the parent)
+A–D DONE. Mechanism: each module gets a unique prefix `__mod$<fqdn>$`; a new recursive `RefRewriter`
+rewrites intra-module bare refs (sibling fn calls, sibling `C(...)` ctors, bare identifiers, match
+type-binding names, and own-nested-import `ns.fn` calls) to the mangled name; an exposure table
+`Resolution::exposed` (surface→mangled) is threaded into codegen (compile_core 5th param; CoreGen.exposed;
+translated at the call site in codegen_expr.cpp) so qualified `ns.fn`/`ns.C` and selective bare names map
+to mangled `funcs` keys, with unlisted siblings staying module-private. ClassDef nodes now survive import
+(D-CLASS). The nested-import rejection is replaced by depth-first transitive recursion with an `inProgress`
+cycle-detection set (D-TRANSITIVE). `@@foreign`: only the funcs key is mangled, `foreignSymbol` untouched.
+The one wiring bug (compile_core's default `exposed={}` meant the table never reached codegen until the
+driver/shell passed `imp.exposed`) was fixed.
+**E / D-MODLET DEFERRED (with reason):** module-level `let` is blocked *below* the resolver — a top-level
+binding is a parse error / silently dropped in parse-tree→AST, and codegen has no module-scope global. Needs
+a parser + codegen follow-up (its own task); the accessor-function fallback works today.
+**Independent re-verification (parent, against HEAD std — the sub-agent's adversarial verifier died on an
+API error, so I re-ran it):** ninja clean; ctest 3/3; corpus 36/36 (incl. 2 new import_sibling cases);
+example sweep no symbol/link failures; `import std.types; types.is_instance_of(42,"int")` → true/false (the
+headline sibling-call fix); a combined probe (main→pmid→pleaf, class `Box` imported, `pleaf.leaf_val()`
+called inside `Box.get`) → 105; a cyclic import → clean `cyclic import detected` diagnostic, no hang.
+Mux's WIP std restored byte-identical.
 
 ## Objective
 Make `import`ed modules behave like real namespaces so a pure-mxs layer-2 stdlib works: intra-module

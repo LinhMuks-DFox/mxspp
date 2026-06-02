@@ -1,0 +1,9 @@
+# progress18: under qualified `import std.types;`, is_instance_of's bare sibling call to
+# `typeof` must resolve (the module is a real namespace). Regression for the central gap.
+import std.io;
+import std.types;
+func main() -> int {
+    io.println(types.is_instance_of(42, "int"));
+    io.println(types.is_instance_of(42, "str"));
+    return 0;
+}

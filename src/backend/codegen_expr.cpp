@@ -221,6 +221,15 @@ namespace mxs::backend::codegen::detail {
                     }
                 }
             }
+            // Import exposure (progress18): translate the SURFACE call name (`ns.fn`/`ns.Class`
+            // qualified, or a selective bare name) to the MANGLED `funcs`/`foreigns` key the
+            // resolver emitted. Module functions/classes live under their mangled names; a program
+            // reaches one only through what its import form exposed. A bare program-local name with
+            // no exposure entry stays itself. Done before the call lookups (funcs/variadics/foreigns)
+            // but NOT before method dispatch (that branch keys off `call->name`, not `callName`).
+            if (exposed)
+                if (auto eit = exposed->find(callName); eit != exposed->end())
+                    callName = eit->second;
             // Method call `recv.m(args)`. Two dispatch paths (progress13 D4):
             //  (1) user-class method  -> the receiver's classinfo vtable (progress11);
             //  (2) built-in container/string method (`xs.append(v)`, `xs.len()`,

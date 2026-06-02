@@ -25,7 +25,8 @@ namespace mxs::backend::codegen {
     std::unique_ptr<llvm::Module>
     compile_core(const ast::TranslationUnit &tu, llvm::LLVMContext &llvmContext,
                  const std::string &moduleName,
-                 const std::set<std::string> &moduleNamespaces) {
+                 const std::set<std::string> &moduleNamespaces,
+                 const std::unordered_map<std::string, std::string> &exposed) {
         auto module = std::make_unique<llvm::Module>(moduleName, llvmContext);
         llvm::IRBuilder<> B(llvmContext);
         auto *i64 = llvm::Type::getInt64Ty(llvmContext);
@@ -199,6 +200,7 @@ namespace mxs::backend::codegen {
         g.foreigns = &foreigns;
         g.variadics = &variadics;
         g.moduleNamespaces = &moduleNamespaces;
+        g.exposed = &exposed;
         for (const auto &s : tu.statements)
             if (const auto *fn = dynamic_cast<const ast::FunctionDef *>(s.get()))
                 if (!fn->isForeign) g.emitFunction(fn);

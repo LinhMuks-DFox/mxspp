@@ -78,9 +78,15 @@ namespace mxs::backend::codegen::detail {
         // dispatch `obj.m(args)` through the receiver's classinfo->vtable.
         const std::unordered_map<std::string, std::int64_t> *selectors = nullptr;
         // Qualified-import namespaces (progress13 D2): an `Identifier(ns)` receiver whose name
-        // is here marks `ns.fn(args)` as a module-qualified call resolving to `funcs[ns.fn]`,
+        // is here marks `ns.fn(args)` as a module-qualified call resolving through `exposed`,
         // told apart from a method call on a value. Empty without qualified imports.
         const std::set<std::string> *moduleNamespaces = nullptr;
+        // Import exposure table (progress18 modules-as-namespaces): maps a SURFACE call name
+        // (qualified `ns.fn`/`ns.Class`, or a selective bare name) to the MANGLED `funcs`/`foreigns`
+        // key the resolver emitted. At a call site the surface name is translated through this
+        // before the flat `funcs` lookup so an imported module's private siblings (only under their
+        // mangled name) and exposed decls both resolve. Empty without imports.
+        const std::unordered_map<std::string, std::string> *exposed = nullptr;
         // Names of @@foreign functions: their C callees BORROW args (the caller releases),
         // whereas user mxs functions/ctors are callee-owned (params adopt; no caller release).
         const std::unordered_set<std::string> *foreigns = nullptr;

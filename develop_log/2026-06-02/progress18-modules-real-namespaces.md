@@ -2,7 +2,7 @@
 id: 2026-06-02/progress18
 date: 2026-06-02
 author: human+ai
-status: active
+status: done (A–D; D-MODLET deferred to a follow-up)
 refs: [2026-06-01/progress13, 2026-06-02/progress16, 2026-06-02/progress17]
 supersedes:
 commits: []
@@ -94,6 +94,16 @@ path supports module-scope `let` of a class instance; fallback = an init-on-firs
 - 2026-06-02 [ai/opus] Recorded per the batch-record-first workflow. Captures the flat-merge-vs-real-
   namespaces gap found while implementing `is_instance_of` (progress16) and the design directions.
   NOT executed — part of the current requirements batch awaiting Mux's go + ordering.
+- 2026-06-02 [ai/opus] IMPLEMENTED (sub-agent) + independently re-verified (parent). A–D landed
+  (name-mangle + RefRewriter intra-module rewrite + exposure table threaded to codegen + classes survive
+  import + transitive imports with cycle detection). D-MODLET (module-level `let` singletons) deferred —
+  it is blocked below the resolver (top-level binding is a parse error / dropped in AST conversion; no
+  module-scope global in codegen) → needs a parser+codegen follow-up task (the accessor-function fallback
+  works today). The sub-agent's adversarial verifier died mid-run on an API socket error, so the parent
+  re-verified independently against HEAD std: ninja clean, ctest 3/3, corpus 36/36 (+2 new import_sibling
+  cases), examples clean, the headline sibling-call fix works, a class-in-imported-module + transitive +
+  in-method cross-module call probe → 105, and a cyclic import is diagnosed (no hang). Committed (code +
+  the 2 corpus cases; Mux's WIP std/*.mxs left untouched). See task30 Outcome.
 - 2026-06-02 [ai/opus] EXPANDED after the std-architecture survey. The layer-2 std.io vision
   (progress20) needs the import system fully real, not just function sibling calls: added D-CLASS
   (classes/bindings must survive import — the merge drops everything but `FunctionDef`), D-TRANSITIVE

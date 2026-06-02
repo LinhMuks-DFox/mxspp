@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         if (!imp.ok) return 1;
         auto context = std::make_unique<llvm::LLVMContext>();
         auto module = mxs::backend::codegen::compile_core(*tu, *context, args[1],
-                                                          imp.namespaces);
+                                                          imp.namespaces, imp.exposed);
         if (!module) {
             std::cerr << "error: core codegen failed for " << args[1] << "\n";
             return 1;

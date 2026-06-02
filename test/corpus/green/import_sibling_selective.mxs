@@ -1,0 +1,9 @@
+# progress18: selective-single `import std.types.{is_instance_of};` — the unlisted sibling
+# `typeof` is merged privately (mangled) so is_instance_of still binds it. Before progress18
+# this said "unknown function 'typeof'".
+import std.io.{println};
+import std.types.{is_instance_of};
+func main() -> int {
+    println(is_instance_of(3, "int"));
+    return 0;
+}
