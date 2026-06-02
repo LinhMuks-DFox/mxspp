@@ -52,7 +52,11 @@ WOULD largely flatten under inlining.
   collapse — directly answering "does nesting hurt" (it stops hurting once passes run). Measure the
   before/after on the 1e6 loop. Caveat: inlining EXPOSES but does not by itself remove the object-model
   costs below (heap-boxed values, dynamic_cast dispatch, refcount atomics, the population mutex) — D1-D3
-  still matter, but they compound with D0.
+  still matter, but they compound with D0. **Default level O2 (aggressive by default, per Mux); a
+  `@@optimize(level=1/2/3)` program directive dials O1/O2/O3 (0 = off).** The `@@`-annotation grammar
+  already parses `@@optimize(...)` (it is currently ignored — only `foreign` is handled), so wiring it is
+  light. This implements the long-documented design (docs/Architecture.md §39-40, §12: merged-module LTO +
+  inlining). See task40.
 
 ## Decisions (proposed targets, in rough impact order — refine at execution)
 - **D1 — gate the population manager off the hot path.** It is a debug/test lever (the ARC baseline in
