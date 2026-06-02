@@ -29,6 +29,31 @@ MXObject), a dynamic-dispatch C call (`mxs_op_*` inspects operand types at runti
 refcounting, and — on EVERY object construct/destruct — a `MXPopulationManager` **mutex lock +
 unordered_set insert/erase** (an ARC-verification debug tool that is always on, even on the hot path).
 
+## MAJOR FINDING (2026-06-02, verified in src/jit/jit.cpp) — the JIT runs NO IR optimization
+While answering Mux's "how far does LLVM's LLIR optimization actually go / does deep nesting hurt?",
+read `src/jit/jit.cpp`: the ORC `LLJIT` is built with only a custom object-linking layer (EH-frame
+silencing). There is **NO IRTransformLayer / PassBuilder pipeline** — so only backend codegen runs
+(isel/regalloc at the TargetMachine default), and **no mid-end IR optimization** (no inliner, no
+mem2reg/SROA, no instcombine/GVN/DCE). Worse: `core.bc`, `std.bc`, and the user IR are added as **three
+separate** `addIRModule` calls, so even a per-module pipeline could not inline ACROSS them.
+
+Consequence: the whole "compile core to bitcode so LLVM inlines across the mxs/lib boundary" design
+(core/CMakeLists.txt + jit.cpp:84 comments) **never actually inlines anything**. Every layer of the
+`user → layer-2 mxs → layer-1 @@foreign C primitive` stack is a REAL, un-inlined runtime call; the
+1e6-loop body is a chain of un-inlined `mxs_op_*` / `mxs_retain` / `mxs_int_to_i64` calls. This is a
+large part of the ~5.3 µs/iter. It also means Mux's layering/nesting is currently NOT free — but it
+WOULD largely flatten under inlining.
+
+- **D0 (NEW — likely the single biggest win; do FIRST) — add an IR optimization pipeline to the JIT.**
+  Link user IR + `core.bc` + `std.bc` into ONE `llvm::Module` (in-process `llvm::Linker`) so the bodies
+  are co-visible, then run a `PassBuilder` default per-module **-O2/-O3 pipeline (incl. the inliner)**
+  before JIT codegen. This inlines the typed fast-path primitives (`mxs_int_*`, `mxs_retain/release`)
+  into hot loops, enables mem2reg/SROA/instcombine/GVN/DCE, and makes shallow layer-2→layer-1 nesting
+  collapse — directly answering "does nesting hurt" (it stops hurting once passes run). Measure the
+  before/after on the 1e6 loop. Caveat: inlining EXPOSES but does not by itself remove the object-model
+  costs below (heap-boxed values, dynamic_cast dispatch, refcount atomics, the population mutex) — D1-D3
+  still matter, but they compound with D0.
+
 ## Decisions (proposed targets, in rough impact order — refine at execution)
 - **D1 — gate the population manager off the hot path.** It is a debug/test lever (the ARC baseline in
   core_test). Compile it out (or make it a no-op) in normal/release runs — a mutex+hash per object
@@ -41,6 +66,8 @@ unordered_set insert/erase** (an ARC-verification debug tool that is always on, 
 These keep the language semantics intact — they are runtime optimizations, not a redesign.
 
 ## Tasks
+- [ ] task40 — **(D0, do first)** add the JIT IR optimization pipeline: link user+core+std IR into one
+      Module, run PassBuilder -O2 (incl. inliner) before codegen; benchmark the 1e6 loop before/after.
 - [ ] task31 — measure + remove the population-manager hot-path cost (D1); re-benchmark.
 - [ ] (later) task — small-int cache/unboxing (D2); type-specialized arithmetic (D3).
 

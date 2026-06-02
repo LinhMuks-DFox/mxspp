@@ -5,7 +5,7 @@ author: human+ai
 status: done
 refs: [2026-06-01/progress13, 2026-06-02/progress16]
 supersedes:
-commits: []
+commits: [3cfacf6]
 files:
   - src/_std/** (NEW)                # the C/C++ backends for std.* modules
   - src/_std/CMakeLists.txt (NEW)    # static lib + bitcode (std.bc) for the JIT
