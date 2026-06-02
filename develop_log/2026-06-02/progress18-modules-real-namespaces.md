@@ -39,11 +39,50 @@ Result: a module's internal helpers/wrappers (the essence of a layer-2 stdlib) a
   in-module bare calls both resolve. (a) is closer to the current flat-merge machinery.
 - **D3 — multi-module import sugar (from Mux's `import std.{io, lib};` sketch): SEPARATE, optional.**
   Selecting several *modules* of a package in one statement is a grammar/resolver convenience that can
-  come after the core namespace fix; tracked here but not required for layer-2 to work.
+  come after the core namespace fix; tracked here but not required for layer-2 to work. (Grammar note:
+  the current selector is `.{ identifier_list }` of *names*, not module paths — D3 needs grammar work,
+  `grammar.hpp:405-412` / `parser.cpp:477-495`.)
+
+### Recommended implementation — name-mangle (survey 2026-06-02, grounded in imports.cpp)
+The resolver (`imports.cpp::resolve_imports`, 59-200) is a flat decl-merge: it only ever changes
+`fn->name` (`take_fn`, 136-143); **function bodies are never rewritten**. That is the whole bug. Fix
+(Direction (a), closest to current machinery, confined to `imports.cpp` + a small codegen exposure
+table):
+1. Give each module a unique internal prefix (e.g. `__mod$std$types$`); rename **every** module fn to
+   `prefix+name` (not just the exposed ones).
+2. **NEW code — rewrite intra-module bare call references**: a recursive AST visitor over each module
+   fn body; for every `FunctionCall` with no receiver whose name matches a sibling in `modFns`, rewrite
+   `name -> prefix+name`. This is the missing step that breaks sibling calls today.
+3. Expose per import form via an **alias/exposure table** in `struct Resolution` (`exposedName ->
+   mangledSymbol`), consumed by codegen: qualified → `ns.fn`; selective → listed bare names; unlisted
+   siblings stay module-private under the mangled name (non-colliding). `@@foreign` fns: mangle the
+   `funcs`/`foreigns` key but keep `foreignSymbol` (the C symbol) untouched (`codegen.cpp:50,62,74`).
+
+### D-CLASS (NEW, survey) — classes must survive import
+The merge indexes/moves **only `ast::FunctionDef`** nodes; a `class FileStream {...}` defined in an
+imported module is **silently dropped** → never reaches codegen. std.io's layer-2 `FileStream` (and any
+class-based stdlib) is impossible until the import merge also carries `ClassDef` (and `Binding`/`let`)
+nodes, with the same qualified/selective/alias + mangling semantics. **Hard prerequisite for progress20.**
+
+### D-TRANSITIVE (NEW, survey) — nested/transitive imports
+Nested imports are hard-rejected (`imports.cpp:114-126`): a module containing `import …` fails fast.
+But `std.io` must `import std.system;` to reach the primitives. Replace the rejection with **recursive
+resolution**: resolve each module's own imports first (each with its own prefix), depth-first, with cycle
+detection. This is what makes the `user_script -> std.io -> std.system -> @@foreign` pipeline possible.
+Also fixes the dead `import std._fileio;` in `std/io.mxs` (and the `_file`/`_fileio` name mismatch, §3).
+
+### D-MODLET (NEW, survey) — module-level `let` singletons
+std.io wants `let stdout = FileStream(1, …)` at module scope (evaluated once at load, shared). The
+`obj_*` examples only construct instances *inside* `main`, not at top level — verify the binding/codegen
+path supports module-scope `let` of a class instance; fallback = an init-on-first-use accessor
+(`func stdout() -> FileStream`). Verify during task30; may split to its own task if codegen-heavy.
 
 ## Tasks
-- [ ] task30 — modules-as-namespaces: intra-module references resolve under every import form
-      (the core fix; re-verify is_instance_of works under `import std.types;` and selective-single).
+- [ ] task30 — modules-as-namespaces: (a) name-mangle + intra-module call rewrite so sibling calls
+      resolve under every import form; (b) classes (+ bindings) survive import (D-CLASS); (c) transitive
+      imports via recursion + cycle detection (D-TRANSITIVE) + `_file`/`_fileio` name fix; (d) verify
+      module-level `let` singletons (D-MODLET). Re-verify `is_instance_of` under `import std.types;` and
+      selective-single; verify a `class` in a module is importable and a module can import a sibling.
 - [ ] (optional, later) task — multi-module import `import std.{a, b};` sugar (D3).
 
 ## Beneficiaries (unblocked by this)
@@ -55,3 +94,9 @@ Result: a module's internal helpers/wrappers (the essence of a layer-2 stdlib) a
 - 2026-06-02 [ai/opus] Recorded per the batch-record-first workflow. Captures the flat-merge-vs-real-
   namespaces gap found while implementing `is_instance_of` (progress16) and the design directions.
   NOT executed — part of the current requirements batch awaiting Mux's go + ordering.
+- 2026-06-02 [ai/opus] EXPANDED after the std-architecture survey. The layer-2 std.io vision
+  (progress20) needs the import system fully real, not just function sibling calls: added D-CLASS
+  (classes/bindings must survive import — the merge drops everything but `FunctionDef`), D-TRANSITIVE
+  (nested imports must recurse, currently hard-rejected), D-MODLET (module-level `let` singletons), and
+  the grounded name-mangle implementation direction (recursive AST call-rewrite + exposure table). This
+  is now the central enabler for the whole std-체계 batch (progress20).

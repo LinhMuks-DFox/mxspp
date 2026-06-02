@@ -5,7 +5,7 @@ author: human+ai
 status: done
 refs: [2026-06-01/progress13, 2026-06-01/progress14]
 supersedes:
-commits: []
+commits: [d8448d1]
 files:
   - project_init.py                              # vendor linenoise (LINENOISE_CONFIG + setup_linenoise)
   - lib/linenoise/linenoise.{c,h}                # NEW vendored single-file BSD line editor

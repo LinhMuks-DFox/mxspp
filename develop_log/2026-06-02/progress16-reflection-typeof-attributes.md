@@ -5,7 +5,7 @@ author: human+ai
 status: active
 refs: [2026-06-01/progress13]
 supersedes:
-commits: []
+commits: [3a5b784]
 files:
   - src/core/MXOps.cpp        # mxs_typeof C-ABI primitive (in core.bc)
   - std/types.mxs             # NEW std module: typeof (layer-1) + is_instance_of (layer-2, pure mxs)

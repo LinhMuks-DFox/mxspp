@@ -1,33 +1,63 @@
 # Task 29 — Create src/std tree + move std-backing functions + std.bc wiring
 id: 2026-06-02/task29
 parent: 2026-06-02/progress17
-status: blocked
+status: in_progress
 owner: code_agent
-blocked-on: Mux's go + confirmation of the D1 borderline split (mxs_str/repr, mxs_raise/exit)
+blocked-on: nothing (Mux greenlit; borderline split resolved by the builtins taxonomy + survey)
 
 ## Objective
 Move the std-library C/C++ backends out of `src/core/` into a dedicated `src/std/`, build them into a
-`std.bc` the JIT links, and keep `src/core/` to the object model + runtime primitives.
+`std.bc` the JIT links, and keep `src/core/` to the object model + runtime primitives. (Foundation for
+the std-체계 batch — progress20's `mxs_sys_*` land in `src/std/system.cpp` after this.)
 
-## Steps (per progress17 D1–D3)
-1. Create `src/std/` with `io.cpp` (mxs_println/print/format/str/repr/raise/exit + arraylist surface),
-   `time.cpp` (mxs_time_*), `types.cpp` (mxs_typeof), `repl.cpp` (mxs_repl_echo, mxs_population_dump[_all]).
-   Move the function bodies from `src/core/{MXFormat,MXString,MXTime,MXOps}.cpp`; keep the C symbol
-   names identical (so `std/*.mxs` @@foreign bindings are unchanged). Keep runtime primitives in core.
-2. `src/std/CMakeLists.txt`: a `std` static lib + a `std.bc` bitcode target, mirroring the per-file
-   `-emit-llvm` + `llvm-link` machinery in `src/core/CMakeLists.txt`. Copy `std.bc` to `build/bin`.
-3. `src/core/CMakeLists.txt`: drop the moved files from the static lib + `CORE_BC_SOURCES`.
-4. `src/jit/jit.cpp`: link `std.bc` (use the existing unused `runtimeBcPath` slot, or add one).
-   `src/driver/main.cpp` + `src/shell/shell.cpp`: locate `std.bc` via `find_bc("std.bc")` and pass it.
-5. Root `CMakeLists.txt`: `add_subdirectory(src/std)`; link `std` where needed.
+## Steps (exact relocation from the 2026-06-02 survey; keep C symbol names identical)
+1. **Create `src/std/` TUs**, moving the function bodies (+ the includes they need):
+   - `io.cpp` ← `mxs_print`, `mxs_println` (from MXFormat.cpp), `mxs_repl_echo` (REPL glue).
+   - `string.cpp` ← `mxs_format` + **the whole format engine** (MXFormat.cpp is consumed by io.cpp +
+     string.cpp and removed from core).
+   - `builtins.cpp` ← `mxs_str`, `mxs_repr` (from MXString.cpp), `mxs_raise`, `mxs_exit` (from MXOps.cpp).
+   - `time.cpp` ← `mxs_time_now/ms/ns` (MXTime.cpp consumed, removed from core).
+   - `types.cpp` ← `mxs_typeof` (from MXOps.cpp).
+   - `system.cpp` ← `mxs_population_dump`, `mxs_population_dump_all` (from MXOps.cpp). (Future home of
+     progress20 `mxs_sys_*`.)
+   Each is an `extern "C"` TU including the core headers it uses (`include/mxspp/core/*.h`).
+2. **BUG fix (same task): define `mxs_panic`.** Codegen emits a call to `mxs_panic` for `assert`
+   (codegen_stmt.cpp:230) but no definition exists in-tree → assert scripts fail JIT symbol resolution.
+   Add `extern "C" void mxs_panic(const char *msg)` to `src/core/MXOps.cpp` (print to stderr + abort);
+   it is codegen-emitted, so it stays in core.bc (always resolvable). Add a corpus case exercising assert.
+3. **`src/std/CMakeLists.txt`** — mirror `src/core/CMakeLists.txt:30-74`:
+   - re-run `find_program(MXS_LLVM_LINK ...)` + the APPLE `-isysroot` block (non-cache vars, not visible
+     cross-dir); `MXS_BC_CXX` (cache) + `BIN_DIR` (root) are visible.
+   - `STD_BC_SOURCES = io.cpp string.cpp builtins.cpp time.cpp types.cpp system.cpp`; per-file
+     `-emit-llvm -c … -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics ${MXS_BC_SYSROOT} -I …/include`
+     → `${BIN_DIR}/std_bc_${nm}.bc`; `llvm-link` → `${BIN_DIR}/std.bc`; `add_custom_target(std-bc ALL …)`.
+   - (Optional `std` static lib for parity — NOT required for linking; symbols resolve via the JIT.)
+4. **`src/core/CMakeLists.txt`** — drop `MXFormat.cpp` + `MXTime.cpp` from the static lib sources and
+   from `CORE_BC_SOURCES`; remove the moved functions from `MXString.cpp` (str/repr) and `MXOps.cpp`
+   (raise/exit/typeof/population_dump[_all]) — leave everything else.
+5. **`src/CMakeLists.txt:5-10`** — `add_subdirectory(std)` after `core`. Root already does
+   `add_subdirectory(src)`.
+6. **JIT/driver/shell wiring** (reuse the dead `runtimeBcPath` slot = std.bc):
+   - `jit.cpp` — no change (line 85 already links `runtimeBcPath`; line 35 no-ops on empty).
+   - `driver/main.cpp` — add `std::string std_bc_path() { return find_bc("std.bc"); }`; at the run-core
+     `jit::run` call (main.cpp:154) pass `std_bc_path()` instead of `""`; thread it into the repl launch.
+   - `shell/shell.cpp` + `include/mxspp/shell/shell.h` — add a `stdBcPath` param to `repl()` +
+     `eval_thunk()`, pass it as the `jit::run` `runtimeBc` arg (shell.cpp:110); optionally show it in
+     `./status`.
 
 ## Acceptance
-- [ ] `ninja -C build` clean; `build/bin/std.bc` present with the moved symbols (`llvm-nm`).
-- [ ] `ctest` 3/3; full `example/examples/*.mxs` sweep at expected rc; corpus 34/34; a REPL pipe
-      (`./objects_population`, `println`) works — i.e. the JIT still resolves every moved symbol.
-- [ ] `grep` confirms no std-backing function remains in `src/core/`; no `std/*.mxs` change needed.
+- [ ] `ninja -C build` clean; `build/bin/std.bc` present and `lib/llvm/bin/llvm-nm build/bin/std.bc`
+      shows the moved symbols (mxs_println/print/format/str/repr/raise/exit/typeof/time_*/repl_echo/
+      population_dump[_all]); `llvm-nm build/bin/core.bc` shows mxs_panic + still has the kept symbols.
+- [ ] `ctest` 3/3; full `example/examples/*.mxs` sweep at expected rc; corpus all green (+ new assert
+      case); a REPL pipe (`./objects_population`, `println`, an import) works — JIT resolves every moved
+      symbol from std.bc.
+- [ ] `grep` confirms the moved std-backing functions no longer live in `src/core/`; no `std/*.mxs`
+      change needed (bindings still resolve cross-bc).
 
 ## Notes
-- Delicate part: the `std.bc` bitcode build (mirror src/core exactly — the host uses `MXS_BC_CXX`).
-- Decide the borderline functions with Mux first (D1): mxs_str/repr (thin type wrappers) and
-  mxs_raise/exit (process control) — move to src/std/io or keep in core.
+- Delicate part: the `std.bc` bitcode build — mirror src/core exactly (same `MXS_BC_CXX`, sysroot,
+  flags). Version-skew: `MXS_BC_CXX`'s LLVM major must be ≤ the JIT's LLVM or `parseIRFile` fails.
+- Build ONLY with `ninja -C build` (auto-reruns cmake for the new subdir/target). Never rebuild.py --clean.
+- The `std/*.mxs` text path (copied to `${BIN_DIR}/std` by driver/CMakeLists.txt:9-12) is orthogonal to
+  `std.bc` — no change here (that's progress21).

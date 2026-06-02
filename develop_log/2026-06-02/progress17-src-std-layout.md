@@ -56,6 +56,42 @@ The JIT resolves these by linking **`core.bc`** (built from `CORE_BC_SOURCES` in
   builds the `std` static lib + `std.bc`; root `CMakeLists.txt` adds the subdirectory; `shell`/driver
   link `std` (replacing the transitive core symbols they used).
 
+## Survey refinement (2026-06-02 — supersedes the D1 borderline questions)
+A 5-agent survey produced the exact relocation map + the copy-ready `std.bc` recipe. Decisions, now
+concrete (Mux's new builtins taxonomy resolves the borderline cases):
+
+- **MOVE to `src/std/` (the pure std surface + REPL glue), keeping C symbol names identical:**
+  - `src/std/io.cpp` ← `mxs_print`, `mxs_println` (from MXFormat.cpp) + `mxs_repl_echo` (REPL glue).
+  - `src/std/string.cpp` ← `mxs_format` **and the whole self-contained format engine** (MXFormat.cpp).
+    → MXFormat.cpp is fully consumed (split into io.cpp + string.cpp) and dropped from core.
+  - `src/std/builtins.cpp` ← `mxs_str`, `mxs_repr` (from MXString.cpp), `mxs_raise`, `mxs_exit`
+    (from MXOps.cpp). (Per Mux's taxonomy, str/repr/raise/exit are the auto-imported **builtins**.)
+  - `src/std/time.cpp` ← `mxs_time_now/ms/ns` (MXTime.cpp consumed, dropped from core).
+  - `src/std/types.cpp` ← `mxs_typeof` (from MXOps.cpp).
+  - `src/std/system.cpp` ← `mxs_population_dump`, `mxs_population_dump_all` (REPL diag, from MXOps.cpp);
+    **and is the future home for progress20's `mxs_sys_*`.**
+- **KEEP in `src/core/` (codegen-emitted or object-model — must stay always-resolvable):** all
+  `mxs_op_*`, `mxs_int_*`, `mxs_str_new`, `mxs_arraylist_*` (emitted for list literals / varargs /
+  `.append`/`.get`), `mxs_str_concat/len/cmp/cstr` (string-type primitives; relocate only when
+  std.string surfaces them, progress20/task34), `mxs_retain/release/object_truthy/obj_delete`,
+  `mxs_get_attr/set_attr/instance_new/object_classinfo/method_missing/is_type/index_get/len`.
+  - **Key insight:** a std module's `@@foreign(symbol_name="X")` binds to symbol X wherever it lives —
+    `std.bc` AND `core.bc` are both JIT-linked. So `std/builtins.mxs`'s `arraylist()` keeps binding
+    `mxs_arraylist_new` even though that symbol stays in `core.bc`. The "move" is about *source-file
+    organization*, not about which `.bc` a bound symbol must sit in.
+- **BUG found (fold into task29): `mxs_panic` is referenced by codegen (assert lowering,
+  codegen_stmt.cpp:230) but DEFINED NOWHERE.** Any script using `assert` would fail JIT symbol
+  resolution. Define it — since it is codegen-emitted (like `mxs_op_*`), put `mxs_panic(const char*)`
+  in `src/core/MXOps.cpp` (prints + `abort`/`_Exit`), staying always-resolvable in core.bc.
+- **std.bc recipe (copy `src/core/CMakeLists.txt:30-74`):** `src/std/CMakeLists.txt` mirrors the
+  per-file `-emit-llvm` + `llvm-link` machinery (rename `core_bc_*`→`std_bc_*`, output `${BIN_DIR}/std.bc`).
+  `src/std` must re-run its own `find_program(MXS_LLVM_LINK)` + APPLE-sysroot block (those are
+  non-cache vars, not visible cross-dir); `MXS_BC_CXX` (cache) + `BIN_DIR` (root) ARE visible.
+  `jit::run` already links the path passed as its `runtimeBcPath` slot (jit.cpp:85) — pass
+  `std_bc_path()` instead of `""` (driver run-core main.cpp:154 + thread through shell). No jit.cpp
+  change. The `std` static lib is NOT needed for linking (symbols resolve via the JIT from std.bc);
+  the critical artifact is `build/bin/std.bc` via an `add_custom_target(std-bc ALL ...)`.
+
 ## Tasks
 - [ ] [task29 — create src/std tree + move std-backing functions + bitcode (std.bc) wiring](tasks/task29-src-std-tree.md)
 
