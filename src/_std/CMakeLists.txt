@@ -52,11 +52,13 @@ foreach(src IN LISTS STD_BC_SOURCES)
     add_custom_command(OUTPUT ${out}
             COMMAND ${MXS_BC_CXX} -emit-llvm -c
                     ${CMAKE_CURRENT_SOURCE_DIR}/${src} -o ${out}
-                    -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics
+                    -std=c++23 -stdlib=libc++ -O2 -fPIC -mno-outline-atomics
                     ${MXS_BC_SYSROOT}
                     -I ${CMAKE_CURRENT_SOURCE_DIR}/../../include
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src} ${STD_BC_HEADERS}
             COMMENT "std -> bitcode: ${src}")
+# NB: -O2 (not -O0) here too — see the matching note in src/core/CMakeLists.txt. optnone bodies
+# (the -O0 default) block the JIT's cross-module inlining of the std primitives (progress19 D0).
     list(APPEND STD_BC_PARTS ${out})
 endforeach()
 add_custom_command(OUTPUT ${BIN_DIR}/std.bc

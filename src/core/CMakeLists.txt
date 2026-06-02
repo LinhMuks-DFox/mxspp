@@ -58,11 +58,14 @@ foreach(src IN LISTS CORE_BC_SOURCES)
     add_custom_command(OUTPUT ${out}
             COMMAND ${MXS_BC_CXX} -emit-llvm -c
                     ${CMAKE_CURRENT_SOURCE_DIR}/${src} -o ${out}
-                    -std=c++23 -stdlib=libc++ -fPIC -mno-outline-atomics
+                    -std=c++23 -stdlib=libc++ -O2 -fPIC -mno-outline-atomics
                     ${MXS_BC_SYSROOT}
                     -I ${CMAKE_CURRENT_SOURCE_DIR}/../../include
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${src} ${CORE_BC_HEADERS}
             COMMENT "core -> bitcode: ${src}")
+# NB: -O2 (not -O0) on the bitcode emit is REQUIRED for the JIT's cross-module inlining (progress19
+# D0): at -O0 clang stamps every body optnone/noinline and the JIT inliner can never flatten the
+# mxs_* primitives into user hot loops. The native `core` static lib (tests) is unaffected.
     list(APPEND CORE_BC_PARTS ${out})
 endforeach()
 add_custom_command(OUTPUT ${BIN_DIR}/core.bc
