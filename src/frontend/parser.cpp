@@ -6,9 +6,11 @@
 #include <tao/pegtl.hpp>
 #include <tao/pegtl/contrib/parse_tree.hpp>
 
+#include <charconv>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mxs::frontend::parser {
@@ -618,6 +620,38 @@ namespace mxs::frontend::parser {
         return a;
     }
 
+    // Honor an `@@optimize(level=N)` annotation by recording the program-level JIT optimization
+    // level on the TranslationUnit (task40 / progress19 D0). The annotation args are {key,value}
+    // string pairs; we read `level` and parse it to an int in [0,3]. A missing/invalid level is a
+    // clean diagnostic to stderr — we leave tu.optLevel unchanged (the driver defaults it) instead
+    // of crashing.
+    static void apply_optimize_annotation(const AnnotInfo &a, ast::TranslationUnit &tu,
+                                          std::string_view source_name) {
+        std::string raw;
+        bool found = false;
+        for (const auto &kv : a.args)
+            if (kv.first == "level") {
+                raw = kv.second;
+                found = true;
+            }
+        if (!found) {
+            std::cerr << source_name
+                      << ": warning: @@optimize requires a `level` argument "
+                         "(level=0|1|2|3); ignoring\n";
+            return;
+        }
+        int level = 0;
+        const char *begin = raw.c_str();
+        const char *end = begin + raw.size();
+        auto [ptr, ec] = std::from_chars(begin, end, level);
+        if (ec != std::errc{ } || ptr != end || level < 0 || level > 3) {
+            std::cerr << source_name << ": warning: @@optimize(level=" << raw
+                      << ") is invalid (expected 0, 1, 2, or 3); ignoring\n";
+            return;
+        }
+        tu.optLevel = level;
+    }
+
     // Translate PEGTL's raw rule-match text into something a user can read:
     //   "parse error matching tao::pegtl::one<'}'>"  ->  "expected '}'"
     //   "...eof"                                      ->  "expected end of input"
@@ -679,15 +713,20 @@ namespace mxs::frontend::parser {
                 }
                 auto s = to_stmt(*c);
                 if (s) {
-                    // A preceding @@foreign annotation binds this function to an external
-                    // symbol — fully generic, no per-function special-casing in codegen.
-                    if (auto *fd = dynamic_cast<ast::FunctionDef *>(s.get())) {
-                        for (const auto &a : pending) {
-                            if (a.name != "foreign") continue;
+                    auto *fd = dynamic_cast<ast::FunctionDef *>(s.get());
+                    for (const auto &a : pending) {
+                        // @@foreign binds a function to an external symbol — fully generic,
+                        // no per-function special-casing in codegen.
+                        if (a.name == "foreign" && fd) {
                             fd->isForeign = true;
                             for (const auto &kv : a.args)
                                 if (kv.first == "symbol_name")
                                     fd->foreignSymbol = kv.second;
+                        } else if (a.name == "optimize") {
+                            // @@optimize(level=N): program-level JIT optimization level (task40 /
+                            // progress19 D0). Attaches to any top-level decl; last/any wins. The
+                            // grammar already parses it — we just honor `level` here.
+                            apply_optimize_annotation(a, *tu, source_name);
                         }
                     }
                     tu->statements.push_back(std::move(s));

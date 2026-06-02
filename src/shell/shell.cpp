@@ -107,8 +107,11 @@ namespace mxs::shell {
             auto mod = mxs::backend::codegen::compile_core(*tu, *ctx, "<repl>",
                                                            imp.namespaces, imp.exposed);
             if (!mod) return false;
+            // The REPL defaults to O2 (the JIT sweet spot); an `@@optimize(level=N)` in the
+            // accumulated defs dials it (task40 / progress19 D0). tu->optLevel is -1 when unset.
+            const int optLevel = tu->optLevel < 0 ? 2 : tu->optLevel;
             mxs::jit::run(std::move(mod), std::move(ctx), /*runtimeBc=*/stdBcPath, "main",
-                          coreBcPath);
+                          coreBcPath, optLevel);
             return true;
         }
     }// namespace

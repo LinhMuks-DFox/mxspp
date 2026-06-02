@@ -153,10 +153,12 @@ int main(int argc, char **argv) {
             std::cerr << "error: core codegen failed for " << args[1] << "\n";
             return 1;
         }
-        const int rc =
-                mxs::jit::run(std::move(module), std::move(context),
-                              /*runtimeBc=*/std_bc_path(), /*entry=*/"main",
-                              core_bc_path());
+        // Program-level JIT optimization from `@@optimize(level=N)` (task40 / progress19 D0):
+        // tu->optLevel is -1 when no annotation was seen — default to O2 (the JIT sweet spot).
+        const int optLevel = tu->optLevel < 0 ? 2 : tu->optLevel;
+        const int rc = mxs::jit::run(std::move(module), std::move(context),
+                                     /*runtimeBc=*/std_bc_path(), /*entry=*/"main",
+                                     core_bc_path(), optLevel);
         // One-shot run: the program's output is done. Exit immediately, skipping global/atexit
         // teardown — JIT'd code may have registered __cxa_atexit handlers whose code lives in
         // now-freed JIT memory (the standard ORC one-shot-runner shutdown hazard). (REPL paths

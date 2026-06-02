@@ -41,6 +41,10 @@ namespace mxs::frontend {
         public:
             TranslationUnit() : core::MXObject(false), MXASTNode(false) { }
             std::vector<std::unique_ptr<MXASTNode>> statements;
+            // Program-level JIT optimization level from `@@optimize(level=N)` (task40 / progress19
+            // D0). -1 = unset (the driver defaults it to O2); 0/1/2/3 map to LLVM O0/O1/O2/O3.
+            // Any/last @@optimize on a top-level decl wins.
+            int optLevel = -1;
         };
 
         // ============================

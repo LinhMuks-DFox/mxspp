@@ -96,9 +96,10 @@ message(STATUS "Bitcode emitter (MXS_BC_CXX): ${MXS_BC_CXX}")
 
 # 3. 使用 LLVM 提供的辅助函数，将所有需要的组件库名存入一个变量
 # `native` pulls the host target's codegen/asmprinter/MC (for AOT object emission, `mxs compile`);
-# `Linker` provides llvm::Linker (used to fold core.bc into the user module before emitting).
+# `Linker` provides llvm::Linker (used to fold core.bc into the user module before emitting);
+# `Passes` provides llvm::PassBuilder (the JIT's mid-end -O0/1/2/3 optimization pipeline, task40).
 llvm_map_components_to_libnames(MXS_LLVM_LIBRARIES
-    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader Linker
+    Core Support ExecutionEngine OrcJIT OrcTargetProcess native IRReader Linker Passes
 )
 
 # --- 寻找 PEGTL (保持不变, 但路径指向新的统一目录名) ---
