@@ -5,7 +5,7 @@ author: human+ai
 status: done (A–D; D-MODLET deferred to a follow-up)
 refs: [2026-06-01/progress13, 2026-06-02/progress16, 2026-06-02/progress17]
 supersedes:
-commits: []
+commits: [6b8eea6]
 files:
   - src/frontend/imports.cpp            # merge a module as a unit (intra-module refs resolve)
   - src/backend/codegen.cpp             # module-scoped name resolution for `ns.fn` + sibling calls
