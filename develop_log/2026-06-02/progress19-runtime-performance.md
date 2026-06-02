@@ -69,9 +69,20 @@ WOULD largely flatten under inlining.
   guards) so int loops don't re-dispatch every op.
 These keep the language semantics intact — they are runtime optimizations, not a redesign.
 
+## Outcome — D0 DONE (2026-06-02, commits 0069f34 + 603eba4)
+D0 was TWO changes: (1) jit::run now links user+core.bc+std.bc into ONE module and runs a PassBuilder
+pipeline (default O2; `@@optimize(level=N)`→O0-O3) before codegen — commit 0069f34; (2) the runtime
+bitcode is emitted at **-O2 not -O0** (commit 603eba4) — the real unlock, because -O0 stamps every
+`mxs_*` body `optnone/noinline` so the JIT inliner could never touch them. Together: a 1e6 integer loop
+dropped from ~5300 ns/iter (original no-opt baseline) to **~271 ns/iter at the default** — and notably
+**~297 ns/iter even at @@optimize(level=0)** (because the pre-optimized bitcode bodies are no longer
+optnone), with level=2 (271) the best and level=3 (294) NOT better → O2 is the right default. So the
+layer-2→layer-1 nesting cost has largely collapsed — Mux's bitcode/LTO design now actually pays off.
+What REMAINS (the ~271 ns/iter floor) is the object model itself — D1/D2/D3 below.
+
 ## Tasks
-- [ ] task40 — **(D0, do first)** add the JIT IR optimization pipeline: link user+core+std IR into one
-      Module, run PassBuilder -O2 (incl. inliner) before codegen; benchmark the 1e6 loop before/after.
+- [x] task40 — **(D0)** JIT optimization pipeline + `@@optimize` + runtime bitcode at -O2. DONE
+      (0069f34 + 603eba4). ~5300→~271 ns/iter; ctest 3/3, corpus 36/36, examples 22/22.
 - [ ] task31 — measure + remove the population-manager hot-path cost (D1); re-benchmark.
 - [ ] (later) task — small-int cache/unboxing (D2); type-specialized arithmetic (D3).
 

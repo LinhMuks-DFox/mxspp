@@ -1,9 +1,20 @@
 # Task 40 — JIT IR optimization pipeline (D0) + `@@optimize(level=N)` annotation
 id: 2026-06-02/task40
 parent: 2026-06-02/progress19
-status: pending
+status: done
 owner: code_agent
-blocked-on: progress18 must finish first (shared build/ dir — cannot run ninja concurrently)
+blocked-on: (was) progress18 — done
+
+## Outcome (2026-06-02, commits 0069f34 + 603eba4; implemented via sub-agent + parent-verified)
+DONE. (1) jit::run links user+core.bc+std.bc into ONE module (llvm::Linker; the IRMover must be scoped
+to destruct before the module is moved into the JIT — a use-after-move SIGSEGV otherwise) and runs a
+PassBuilder per-module pipeline; `@@optimize(level=0/1/2/3)`→O0-O3 via `TranslationUnit::optLevel`,
+default O2, threaded through driver + shell, invalid level = clean diagnostic. (2) THE key unlock —
+runtime bitcode emitted at -O2 (was -O0 = optnone/noinline, which blocked all primitive inlining).
+Benchmark (1e6 int loop, ns/iter): baseline ~5300 → bitcode-O0 {O0 2472, O2 1141} → bitcode-O2 {O0 297,
+O2 271, O3 294}. Default O2 confirmed (O3 not faster). Verified against HEAD std: ninja clean, ctest
+3/3, corpus 36/36, examples 22/22; Mux WIP std restored byte-identical. Remaining ns/iter floor = the
+object model (D1/D2/D3).
 
 ## Objective
 Make the JIT actually optimize (it runs NO mid-end IR passes today — progress19 D0). Implement the
