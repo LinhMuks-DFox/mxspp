@@ -220,23 +220,6 @@ std::int64_t mxs_is_type(const MXObject *o, const char *type) {
     return o->get_rtti().name == t ? 1 : 0;// other user/class types: match by RTTI name
 }
 
-// The mxs type name of a value, as a fresh MXString (the inverse of mxs_is_type's mapping): a user
-// instance -> its class name (MXClassInfo->name); built-ins -> the canonical name
-// (int/float/str/bool/nil/List/Error). Backs `std.types.typeof`. Foreign-borrow ABI: returns a +1
-// the caller owns.
-MXObject *mxs_typeof(const MXObject *o) {
-    if (!o) return new MXString("nil");
-    if (const auto *inst = as<MXInstance>(o)) return new MXString(inst->class_name());
-    if (as<MXError>(o)) return new MXString("Error");
-    if (as<MXInteger>(o)) return new MXString("int");
-    if (as<MXFloat>(o)) return new MXString("float");
-    if (as<MXString>(o)) return new MXString("str");
-    if (as<MXBoolean>(o)) return new MXString("bool");
-    if (as<mxs::builtin::MXNil>(o)) return new MXString("nil");
-    if (as<mxs::builtin::MXArrayList>(o)) return new MXString("List");
-    return new MXString(o->get_rtti().name);
-}
-
 // Generic length: ArrayList element count or String byte length, as an MXInteger. Used by
 // `len(...)` and `for x in xs`. Non-sized objects -> MXError.
 MXObject *mxs_len(const MXObject *o) {
@@ -320,41 +303,14 @@ MXObject *mxs_method_missing(const MXObject *recv, const char *name) {
                        std::string("object has no method '") + (name ? name : "") + "'");
 }
 
-// REPL introspection (the `./objects_population` meta-command). These MUST be reached through
-// core.bc (the JIT path), not a direct C++ call from the shell: MXPopulationManager is a
-// function-local singleton duplicated in the statically-linked `core` lib AND in core.bc, and
-// JIT'd user objects register with core.bc's instance. The shell invokes these via a JIT'd
-// expression so the count reflects the SAME singleton the user's objects live in. Both print and
-// return void (mxs `nil`); they allocate no MXObject, so they don't perturb the snapshot.
-void mxs_population_dump(void) {
-    std::printf("live MXObjects: %zu\n",
-                mxs::core::MXPopulationManager::get_manager().population_count());
-}
-void mxs_population_dump_all(void) {
-    auto &mgr = mxs::core::MXPopulationManager::get_manager();
-    const std::size_t n = mgr.population_count();
-    const std::string dump = mgr.repr();// snapshot taken before any printing/allocation
-    std::printf("live MXObjects: %zu\n", n);
-    std::fputs(dump.c_str(), stdout);
-    std::fputc('\n', stdout);
-}
-
-// `raise` / `exit` as functions (progress06: `raise` is a special form of `exit` — exit with
-// error). Both terminate the process immediately (flush + _Exit, skipping the ORC exit-teardown
-// hazard). raise prints the error object; exit uses the given integer code.
-[[noreturn]] void mxs_raise(const MXObject *err) {
-    std::fprintf(stderr, "mxs: unhandled error: %s\n", err ? err->repr().c_str() : "nil");
+// Assertion failure (codegen-emitted, NOT a std surface): the `assert` statement lowers to a
+// conditional call to mxs_panic on the failing branch (backend/codegen_stmt.cpp). It stays in
+// core.bc (always JIT-linked) since codegen emits the call directly. Print the message to stderr,
+// flush every stream, and terminate with the conventional SIGABRT exit status (128 + SIGABRT(6)).
+void mxs_panic(const char *msg) {
+    std::fprintf(stderr, "mxs: %s\n", msg ? msg : "panic");
     std::fflush(nullptr);
-    std::_Exit(1);
-}
-[[noreturn]] void mxs_exit(const MXObject *code) {
-    std::int64_t n = 0;
-    if (const auto *i = as<MXInteger>(code)) {
-        bool ok = false;
-        n = i->to_i64(ok);
-    }
-    std::fflush(nullptr);
-    std::_Exit(static_cast<int>(n));
+    std::_Exit(134);
 }
 
 }// extern "C"

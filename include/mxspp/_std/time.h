@@ -1,8 +1,8 @@
 #pragma once
 #include "mxspp/core/MXObject.h"
 
-// time — timestamp primitives (progress13). Each returns a fresh, owned (+1) MXInteger. These are
-// the leaves the language's `time` facility binds to via @@foreign.
+// std.time — timestamp primitives (progress17: relocated out of src/core into src/_std). Each
+// returns a fresh, owned (+1) MXInteger. The language binds these via @@foreign in std/time.mxs.
 extern "C" {
 mxs::core::MXObject *mxs_time_now();// wall-clock seconds since the Unix epoch
 mxs::core::MXObject *mxs_time_ms(); // wall-clock milliseconds since the Unix epoch

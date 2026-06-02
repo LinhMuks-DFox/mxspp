@@ -9,7 +9,7 @@ supersedes:
 commits: []
 files:
   - std/{system,_file,io,string,array,builtins,net_io,types,time}.mxs  # the module taxonomy (.mxs surface)
-  - src/std/{system,io,string,array,builtins,types,time,repl}.cpp      # layer-1 C primitives (per progress17)
+  - src/_std/{system,io,string,array,builtins,types,time,repl}.cpp      # layer-1 C primitives (per progress17)
   - src/core/MXOps.cpp                                                 # mxs_op_add: list+list; mxs_panic def (bug)
   - src/core/MXArrayList.cpp, MXString.cpp                             # new array/string layer-1 primitives
 
@@ -52,7 +52,7 @@ Naming fix: `std/io.mxs` currently imports `std._fileio` but the file is `std/_f
 ## Decisions (proposed — F-tagged items are forks Mux should confirm)
 
 - **D1 — fd-in-MXInteger I/O model.** A file descriptor is a small `MXInteger`; the layer-1 surface is
-  raw POSIX (`mxs_sys_open/read/write/close/lseek/fsync` in `src/std/system.cpp`), each returning a
+  raw POSIX (`mxs_sys_open/read/write/close/lseek/fsync` in `src/_std/system.cpp`), each returning a
   fresh owned `MXObject*` (an `MXInteger`/`MXString`, or an `MXError` on failure — so layer-2 can
   `match`/raise). No new core MXObject subtype (rejected `MXFile`/opaque-`FILE*` as over-built for v1).
   Matches the established `mxs_time_*` pattern.
@@ -82,7 +82,7 @@ Naming fix: `std/io.mxs` currently imports `std._fileio` but the file is `std/_f
 
 ## Hard dependencies (this progress is blocked until these land)
 
-1. **progress17** — `src/std/` C tree + `std.bc`. std.system's `mxs_sys_*` and std.io's primitives live
+1. **progress17** — `src/_std/` C tree + `std.bc`. std.system's `mxs_sys_*` and std.io's primitives live
    here; the reorg must exist first.
 2. **progress18** — the import system must become *real* for the layer-2 vision. Three blockers found
    in the survey, ALL required by std.io:
@@ -104,7 +104,7 @@ Naming fix: `std/io.mxs` currently imports `std._fileio` but the file is `std/_f
 
 ## Tasks (deferred until 17 + 18 + 21 land; recorded now per batch-record-first)
 
-- [ ] task32 — std.system layer-1 (`src/std/system.cpp`: `mxs_sys_*` + const) + `std/system.mxs`.
+- [ ] task32 — std.system layer-1 (`src/_std/system.cpp`: `mxs_sys_*` + const) + `std/system.mxs`.
 - [ ] task33 — std.io / std._file layer-2 (`FileStream` class; stdout/stderr/stdlog; println/input).
 - [ ] task34 — std.string surface (new `mxs_str_*` primitives + `std/string.mxs` wrappers).
 - [ ] task35 — std.array surface (new `mxs_arraylist_*` primitives + `std/array.mxs`; D7/D8).

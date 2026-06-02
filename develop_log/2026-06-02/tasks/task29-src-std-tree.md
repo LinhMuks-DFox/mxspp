@@ -1,17 +1,33 @@
-# Task 29 — Create src/std tree + move std-backing functions + std.bc wiring
+# Task 29 — Create src/_std tree + move std-backing functions + std.bc wiring
 id: 2026-06-02/task29
 parent: 2026-06-02/progress17
-status: in_progress
+status: done
 owner: code_agent
 blocked-on: nothing (Mux greenlit; borderline split resolved by the builtins taxonomy + survey)
 
+## Outcome (2026-06-02, implemented + adversarially verified via sub-agents)
+DONE. The C++ refactor is verified correct: `std.bc` defines all 14 moved symbols (T), `core.bc`
+defines the new `mxs_panic` and none of the 14 (no ODR collision), the moved bodies are gone from
+`src/core`, `MXFormat.{cpp,h}`+`MXTime.{cpp,h}` are deleted, and `include/mxspp/_std/` has a prototype
+per symbol. **Isolation proof** (verifier, with HEAD's `std/io.mxs`): `ninja` clean, ctest 3/3, corpus
+34/34, example sweep 22/22, REPL `println`+`./objects_population` green, a failing `assert` aborts via
+`mxs_panic` (rc 134, not "symbol not found").
+Necessary deviation: `core_test` natively calls `mxs_str`/`mxs_repr`/`mxs_format` (now in `_std`), so
+`src/_std/CMakeLists.txt` also builds a `std` STATIC lib (the JIT still uses `std.bc`); `core_test`
+links `core std`.
+**Caveat (NOT a task29 regression):** the working tree carries Mux's WIP `std/io.mxs`
+(`import std._fileio;` nested import + the `@@foreign` bindings moved out) which breaks any program
+importing `std.io` until **progress18** (transitive imports) + **progress20** (`std/_file.mxs` body +
+bindings re-homed to builtins/string per the new taxonomy) land. Left untouched per scope; HEAD's
+`std/io.mxs` is green.
+
 ## Objective
-Move the std-library C/C++ backends out of `src/core/` into a dedicated `src/std/`, build them into a
+Move the std-library C/C++ backends out of `src/core/` into a dedicated `src/_std/`, build them into a
 `std.bc` the JIT links, and keep `src/core/` to the object model + runtime primitives. (Foundation for
-the std-체계 batch — progress20's `mxs_sys_*` land in `src/std/system.cpp` after this.)
+the std-체계 batch — progress20's `mxs_sys_*` land in `src/_std/system.cpp` after this.)
 
 ## Steps (exact relocation from the 2026-06-02 survey; keep C symbol names identical)
-1. **Create `src/std/` TUs**, moving the function bodies (+ the includes they need):
+1. **Create `src/_std/` TUs**, moving the function bodies (+ the includes they need):
    - `io.cpp` ← `mxs_print`, `mxs_println` (from MXFormat.cpp), `mxs_repl_echo` (REPL glue).
    - `string.cpp` ← `mxs_format` + **the whole format engine** (MXFormat.cpp is consumed by io.cpp +
      string.cpp and removed from core).
@@ -25,7 +41,7 @@ the std-체계 batch — progress20's `mxs_sys_*` land in `src/std/system.cpp` a
    (codegen_stmt.cpp:230) but no definition exists in-tree → assert scripts fail JIT symbol resolution.
    Add `extern "C" void mxs_panic(const char *msg)` to `src/core/MXOps.cpp` (print to stderr + abort);
    it is codegen-emitted, so it stays in core.bc (always resolvable). Add a corpus case exercising assert.
-3. **`src/std/CMakeLists.txt`** — mirror `src/core/CMakeLists.txt:30-74`:
+3. **`src/_std/CMakeLists.txt`** — mirror `src/core/CMakeLists.txt:30-74`:
    - re-run `find_program(MXS_LLVM_LINK ...)` + the APPLE `-isysroot` block (non-cache vars, not visible
      cross-dir); `MXS_BC_CXX` (cache) + `BIN_DIR` (root) are visible.
    - `STD_BC_SOURCES = io.cpp string.cpp builtins.cpp time.cpp types.cpp system.cpp`; per-file

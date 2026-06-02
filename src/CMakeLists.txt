@@ -3,6 +3,7 @@
 # 只包含所有子目录来定义所有目标
 # 链接逻辑将移至各模块自己的 CMakeLists.txt 文件中
 add_subdirectory(core)
+add_subdirectory(_std)
 add_subdirectory(frontend)
 add_subdirectory(backend)
 add_subdirectory(jit)

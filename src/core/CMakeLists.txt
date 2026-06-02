@@ -4,7 +4,6 @@ add_library(core STATIC
         MXBoolean.cpp
         MXError.cpp
         MXFloat.cpp
-        MXFormat.cpp
         MXInstance.cpp
         MXInteger.cpp
         MXLeftValue.cpp
@@ -15,7 +14,6 @@ add_library(core STATIC
         MXOps.cpp
         MXPopulationManager.cpp
         MXString.cpp
-        MXTime.cpp
         MXType.cpp
         MXDynamicTypeInfoManager.cpp
 )
@@ -49,7 +47,7 @@ endif()
 set(CORE_BC_SOURCES
         MXObject.cpp MXPopulationManager.cpp MXError.cpp
         MXInteger.cpp MXString.cpp MXFloat.cpp MXBoolean.cpp MXNil.cpp
-        MXArrayList.cpp MXLeftValue.cpp MXInstance.cpp MXOps.cpp MXFormat.cpp MXTime.cpp)
+        MXArrayList.cpp MXLeftValue.cpp MXInstance.cpp MXOps.cpp)
 # Bitcode must rebuild when any core header changes too (vtable layouts / inline virtuals live
 # in the headers); depending only on the .cpp leaves stale, ABI-incompatible bitcode.
 file(GLOB CORE_BC_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/../../include/mxspp/core/*.h)

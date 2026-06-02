@@ -96,7 +96,7 @@ namespace mxs::shell {
         bool eval_thunk(const std::string &fullPrelude, const std::string &defs,
                         const std::string &body,
                         const std::vector<std::string> &searchDirs,
-                        const std::string &coreBcPath) {
+                        const std::string &coreBcPath, const std::string &stdBcPath) {
             const std::string src = fullPrelude + "\n" + defs + "func main() -> int {\n" +
                                     body + "    return 0;\n}\n";
             auto tu = mxs::frontend::parser::parse_to_ast(src, "<repl>");
@@ -107,13 +107,14 @@ namespace mxs::shell {
             auto mod = mxs::backend::codegen::compile_core(*tu, *ctx, "<repl>",
                                                            imp.namespaces);
             if (!mod) return false;
-            mxs::jit::run(std::move(mod), std::move(ctx), /*runtimeBc=*/"", "main",
+            mxs::jit::run(std::move(mod), std::move(ctx), /*runtimeBc=*/stdBcPath, "main",
                           coreBcPath);
             return true;
         }
     }// namespace
 
-    int repl(const std::vector<std::string> &searchDirs, const std::string &coreBcPath) {
+    int repl(const std::vector<std::string> &searchDirs, const std::string &coreBcPath,
+             const std::string &stdBcPath) {
         std::cout << "mxs REPL — enter an expression (1 + 2 * 3), a let (let x = 5), a "
                      "statement\n"
                      "(for i in 0..3 { ... }), or a definition (func/class/...).\n"
@@ -171,6 +172,8 @@ namespace mxs::shell {
                               << "history entries:  " << historyCount << "\n"
                               << "core.bc:          "
                               << (coreBcPath.empty() ? "<not found>" : coreBcPath) << "\n"
+                              << "std.bc:           "
+                              << (stdBcPath.empty() ? "<not found>" : stdBcPath) << "\n"
                               << "module search dirs:";
                     for (const auto &d : searchDirs)
                         std::cout << "\n  - " << (d.empty() ? "<cwd>" : d);
@@ -179,11 +182,11 @@ namespace mxs::shell {
                     // Route through the JIT eval path (replaying the accumulated lets) so the
                     // count reflects core.bc's singleton + the current session's live objects.
                     eval_thunk(fullPrelude, defs, lets + "    __objects_population();\n",
-                               searchDirs, coreBcPath);
+                               searchDirs, coreBcPath, stdBcPath);
                 } else if (t == "./objects_population all") {
                     eval_thunk(fullPrelude, defs,
                                lets + "    __objects_population_all();\n", searchDirs,
-                               coreBcPath);
+                               coreBcPath, stdBcPath);
                 } else {
                     std::cout << "unknown command: " << t
                               << "  (try ./quit  ./reset  ./status  ./objects_population "
@@ -216,7 +219,7 @@ namespace mxs::shell {
                 body += "    __repl_echo(" + stmt + ");\n";
 
             // Persist a `let` only if it built (a failed redefinition keeps the prior binding).
-            if (eval_thunk(fullPrelude, defs, body, searchDirs, coreBcPath)) {
+            if (eval_thunk(fullPrelude, defs, body, searchDirs, coreBcPath, stdBcPath)) {
                 if (isLet) lets += "    " + stmt + ";\n";
             }
         }

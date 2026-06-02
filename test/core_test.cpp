@@ -33,7 +33,7 @@ void mxs_set_attr(mxs::core::MXObject *, const char *, mxs::core::MXObject *);
 mxs::core::MXObject *mxs_get_attr(const mxs::core::MXObject *, const char *);
 std::int64_t mxs_is_type(const mxs::core::MXObject *, const char *);
 const mxs::core::MXClassInfo *mxs_object_classinfo(const mxs::core::MXObject *);
-// stdio: str/repr builtins (MXString.cpp) + format + list packing (MXFormat.cpp / MXArrayList.cpp).
+// stdio: str/repr builtins + format (src/_std/builtins.cpp, string.cpp) + list packing (MXArrayList.cpp).
 mxs::core::MXObject *mxs_str(mxs::core::MXObject *);
 mxs::core::MXObject *mxs_repr(mxs::core::MXObject *);
 mxs::core::MXObject *mxs_format(mxs::core::MXObject *, mxs::core::MXObject *);

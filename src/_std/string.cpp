@@ -1,8 +1,8 @@
-#include "mxspp/core/MXFormat.h"
+#include "mxspp/_std/string.h"
+
 #include "mxspp/core/MXArrayList.h"
 #include "mxspp/core/MXError.h"
 #include "mxspp/core/MXFloat.h"
-#include "mxspp/core/MXNil.h"
 #include "mxspp/core/MXObject.h"
 #include "mxspp/core/MXString.h"
 
@@ -11,8 +11,8 @@
 #include <string>
 
 // ============================================================================================
-// MXFormat — the stdio text-output slice (progress12). `format` is a pure string-building engine
-// (no IO), so it is portable / self-hostable later; `print`/`println` are the only IO here.
+// std.string — the format engine (progress17: relocated from src/core/MXFormat.cpp). `format` is a
+// pure string-building engine (no IO), so it is portable / self-hostable later.
 // ============================================================================================
 namespace {
     using mxs::builtin::MXArrayList;
@@ -186,30 +186,6 @@ MXObject *mxs_format(MXObject *fmtObj, MXObject *argsObj) {
         ++i;
     }
     return new MXString(out);
-}
-
-void mxs_print(MXObject *argsObj) {
-    auto *args = dynamic_cast<MXArrayList *>(argsObj);
-    if (!args) {// not a list (defensive): print the single value
-        if (argsObj) std::fprintf(stdout, "%s", argsObj->str().c_str());
-        return;
-    }
-    for (std::size_t i = 0; i < args->size(); ++i) {
-        if (i) std::fputc(' ', stdout);
-        const MXObject *e = args->get(static_cast<std::int64_t>(i));
-        std::fprintf(stdout, "%s", e ? e->str().c_str() : "nil");
-    }
-}
-
-void mxs_println(MXObject *argsObj) {
-    mxs_print(argsObj);
-    std::fputc('\n', stdout);
-}
-
-void mxs_repl_echo(MXObject *o) {
-    if (!o || dynamic_cast<const mxs::builtin::MXNil *>(o))
-        return;// skip nil (Python-style)
-    std::fprintf(stdout, "%s\n", o->repr().c_str());
 }
 
 }// extern "C"

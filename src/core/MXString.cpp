@@ -96,11 +96,6 @@ extern "C" {
 
 MXObject *mxs_str_new(const char *s) { return new MXString(s ? s : ""); }
 
-// str(x) / repr(x) builtins (progress12 D-STR-REPR): a fresh, owned (+1) MXString of the value's
-// human / developer form. Null → "nil". Polymorphic over any MXObject via its virtual str()/repr().
-MXObject *mxs_str(MXObject *o) { return new MXString(o ? o->str() : "nil"); }
-MXObject *mxs_repr(MXObject *o) { return new MXString(o ? o->repr() : "nil"); }
-
 MXObject *mxs_str_concat(MXObject *a, MXObject *b) {
     const MXString *sa = as_str(a), *sb = as_str(b);
     if (!sa || !sb) return new MXString();

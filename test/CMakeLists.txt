@@ -7,10 +7,12 @@ target_link_libraries(frontend_test PRIVATE frontend core)
 
 add_test(NAME frontend_test COMMAND frontend_test)
 
-# Core type tests — the real C++ MXObject subclasses (MXInteger, …). Links `core`.
+# Core type tests — the real C++ MXObject subclasses (MXInteger, …). Links `core` for the object
+# model and `std` for the std-backing builtins it exercises natively (mxs_str/mxs_repr/mxs_format,
+# relocated to src/_std in progress17).
 add_executable(core_test core_test.cpp)
 target_include_directories(core_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(core_test PRIVATE core)
+target_link_libraries(core_test PRIVATE core std)
 
 add_test(NAME core_test COMMAND core_test)
 

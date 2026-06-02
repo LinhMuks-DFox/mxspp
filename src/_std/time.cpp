@@ -1,4 +1,5 @@
-#include "mxspp/core/MXTime.h"
+#include "mxspp/_std/time.h"
+
 #include "mxspp/core/MXInteger.h"
 #include "mxspp/core/MXObject.h"
 
@@ -6,8 +7,9 @@
 #include <cstdint>
 
 // ============================================================================================
-// MXTime — timestamp primitives (progress13). Wall-clock readings use system_clock; the monotonic
-// reading uses steady_clock (the right source for measuring elapsed time). All return MXInteger.
+// std.time — timestamp primitives (progress17: relocated from src/core/MXTime.cpp). Wall-clock
+// readings use system_clock; the monotonic reading uses steady_clock (the right source for
+// measuring elapsed time). All return MXInteger.
 // ============================================================================================
 extern "C" {
 

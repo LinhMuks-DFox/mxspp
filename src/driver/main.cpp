@@ -77,6 +77,9 @@ namespace {
         return "";
     }
     std::string core_bc_path() { return find_bc("core.bc"); }
+    // The std-library bitcode (std.bc): the C/C++ backends for the importable std.* modules
+    // (progress17), JIT-linked alongside core.bc so the @@foreign symbols in std/*.mxs resolve.
+    std::string std_bc_path() { return find_bc("std.bc"); }
 
     // Directory containing the running executable (empty if undiscoverable). The std modules are
     // copied next to the binary at build time (src/CMakeLists), so this is the robust install path.
@@ -121,7 +124,7 @@ int main(int argc, char **argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
 
     if (args.empty() || (args.size() == 1 && args[0] == "shell"))
-        return mxs::shell::repl(std_search_dirs(), core_bc_path());
+        return mxs::shell::repl(std_search_dirs(), core_bc_path(), std_bc_path());
 
     // New object model (progress09 ④): values are real core::MXObject*; arithmetic emits the
     // typed core ABI (mxs_int_*), linked from core.bc. Seed slice (int arithmetic + print).
@@ -151,8 +154,9 @@ int main(int argc, char **argv) {
             return 1;
         }
         const int rc =
-                mxs::jit::run(std::move(module), std::move(context), /*runtimeBc=*/"",
-                              /*entry=*/"main", core_bc_path());
+                mxs::jit::run(std::move(module), std::move(context),
+                              /*runtimeBc=*/std_bc_path(), /*entry=*/"main",
+                              core_bc_path());
         // One-shot run: the program's output is done. Exit immediately, skipping global/atexit
         // teardown — JIT'd code may have registered __cxa_atexit handlers whose code lives in
         // now-freed JIT memory (the standard ORC one-shot-runner shutdown hazard). (REPL paths
