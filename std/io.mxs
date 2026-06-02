@@ -12,12 +12,20 @@
 # Import-gated (progress13 D2): reach these only via `import std.io;` (qualified `io.println(...)`),
 # `import std.io as o;`, or `import std.io.{println, print, format, str, repr};` (unqualified).
 # Nothing here is in scope without an import.
+import std._file;
 
-@@foreign(symbol_name="mxs_println")          func println(...args: any) -> nil;
-@@foreign(symbol_name="mxs_print")            func print(...args: any) -> nil;
-@@foreign(symbol_name="mxs_str")              func str(x: any) -> any;
-@@foreign(symbol_name="mxs_repr")             func repr(x: any) -> any;
-@@foreign(symbol_name="mxs_format")           func format(fmt: str, ...args: any) -> any;
-@@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
-@@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
-@@foreign(symbol_name="mxs_exit")             func exit(code: any) -> nil;
+
+@@foreign(symbol_name="mxs_println")
+func println(...args: any) -> nil;
+
+@@foreign(symbol_name="mxs_print")
+func print(...args: any) -> nil;
+
+func input(prompt: str) -> str{}
+
+# if a io buffer exist in crrent implementation
+func flush_buffer(){} 
+func resize_buffer(){}
+
+func print_error_msg() {}
+

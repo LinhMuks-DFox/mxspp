@@ -1,0 +1,2 @@
+@@foreign(symbol_name="mxs_format")
+func format(fmt: str, ...args: any) -> any;

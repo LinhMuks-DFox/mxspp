@@ -1,0 +1,5 @@
+@@foreign(symbol_name="mxs_str")              func str(x: any) -> any;
+@@foreign(symbol_name="mxs_repr")             func repr(x: any) -> any;
+@@foreign(symbol_name="mxs_arraylist_new")    func arraylist() -> any;
+@@foreign(symbol_name="mxs_raise")            func raise(e: any) -> nil;
+@@foreign(symbol_name="mxs_exit")             func exit(code: any) -> nil;

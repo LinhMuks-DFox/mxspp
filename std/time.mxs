@@ -15,3 +15,4 @@
 @@foreign(symbol_name="mxs_time_now") func now() -> int;
 @@foreign(symbol_name="mxs_time_ms")  func now_ms() -> int;
 @@foreign(symbol_name="mxs_time_ns")  func monotonic_ns() -> int;
+
